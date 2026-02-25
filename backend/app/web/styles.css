@@ -64,17 +64,32 @@ body {
   border-radius: 12px;
   padding: 18px;
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
-  max-width: 1200px;
+  max-width: 1280px;
+}
+
+.card-lite {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.card-lite h3 {
+  margin-top: 0;
 }
 
 .field { margin-bottom: 12px; }
 label { display: block; font-size: 13px; margin-bottom: 6px; }
-input {
+input,
+textarea {
   width: 100%;
-  max-width: 360px;
   border: 1px solid #cad5e5;
   border-radius: 8px;
   padding: 10px;
+  background: #fff;
+}
+textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 .primary-btn, .secondary-btn, .danger-btn {
@@ -111,11 +126,18 @@ input {
 .metric h4 { margin: 0 0 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
 .metric .value { font-size: 28px; font-weight: 700; }
 
+.configs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+
 .table-card {
   border: 1px solid var(--line);
   border-radius: 10px;
   overflow: auto;
   background: white;
+  margin-top: 12px;
 }
 
 table {
@@ -128,10 +150,18 @@ th, td {
   text-align: left;
   padding: 10px;
   border-bottom: 1px solid #eef2f7;
+  vertical-align: top;
 }
 th {
   background: #f8fafc;
   color: #475569;
+}
+
+.json-mini {
+  white-space: pre-wrap;
+  max-width: 420px;
+  margin: 0;
+  font-size: 11px;
 }
 
 .badge {
@@ -145,7 +175,9 @@ th {
 .badge.processing { background: #e0f2fe; color: #075985; }
 .badge.review { background: #fef3c7; color: #92400e; }
 
-.status { font-size: 13px; color: #b91c1c; }
+.status { font-size: 13px; color: #b91c1c; margin-top: 8px; }
+.status.ok { color: #166534; }
+
 .empty {
   border: 1px dashed #c9d4e4;
   border-radius: 8px;

@@ -1,8 +1,8 @@
 const state = {
   token: localStorage.getItem("epe_token") || "",
   currentView: "summary",
-  version: "v0.3.0",
-  build: "2026.02.25-local-02",
+  version: "v0.4.0",
+  build: "2026.02.25-local-03",
 };
 
 const endpoints = {
@@ -24,6 +24,15 @@ const loginStatus = document.getElementById("loginStatus");
 const refreshBtn = document.getElementById("refreshBtn");
 const logoutBtn = document.getElementById("logoutBtn");
 
+const viewTitle = {
+  summary: "Resumo",
+  usage: "Uso",
+  emails: "Emails",
+  documents: "Documentos",
+  review: "Revisão",
+  configs: "Configurações",
+};
+
 function statusBadge(status) {
   const s = (status || "").toLowerCase();
   if (s.includes("done")) return `<span class="badge done">${status}</span>`;
@@ -41,6 +50,8 @@ function renderTable(columns, rows) {
         .map((c) => {
           const value = row[c.key];
           if (c.key === "status") return `<td>${statusBadge(value)}</td>`;
+          if (typeof value === "boolean") return `<td>${value ? "Sim" : "Não"}</td>`;
+          if (typeof value === "object" && value !== null) return `<td><pre class="json-mini">${escapeHtml(JSON.stringify(value, null, 2))}</pre></td>`;
           return `<td>${value ?? "-"}</td>`;
         })
         .join("");
@@ -70,9 +81,67 @@ function renderUsage(data) {
   `;
 }
 
+function renderConfigs(data) {
+  return `
+    <div class="configs-grid">
+      <section class="card-lite">
+        <h3>Regras</h3>
+        <div class="field"><label>Nome da regra</label><input id="ruleName" type="text" placeholder="ex: nota_fiscal_regra" /></div>
+        <div class="field"><label>Definição (JSON)</label><textarea id="ruleDefinition" rows="5" placeholder='{"contains": ["nota fiscal"]}'></textarea></div>
+        <button id="saveRuleBtn" class="primary-btn">Salvar regra</button>
+        <p id="ruleStatus" class="status ok"></p>
+        ${renderTable(
+          [
+            { key: "id", label: "ID" },
+            { key: "rule_name", label: "Nome" },
+            { key: "is_active", label: "Ativa" },
+            { key: "definition", label: "Definição" },
+          ],
+          data.rules,
+        )}
+      </section>
+
+      <section class="card-lite">
+        <h3>Prompts</h3>
+        <div class="field"><label>Nome do prompt</label><input id="promptName" type="text" placeholder="ex: classificacao_base" /></div>
+        <div class="field"><label>Prompt</label><textarea id="promptBody" rows="5" placeholder="Texto do prompt"></textarea></div>
+        <button id="savePromptBtn" class="primary-btn">Salvar prompt</button>
+        <p id="promptStatus" class="status ok"></p>
+        ${renderTable(
+          [
+            { key: "id", label: "ID" },
+            { key: "name", label: "Nome" },
+            { key: "is_active", label: "Ativo" },
+            { key: "prompt", label: "Prompt" },
+          ],
+          data.prompts,
+        )}
+      </section>
+
+      <section class="card-lite">
+        <h3>Schemas</h3>
+        <div class="field"><label>Tipo de documento</label><input id="schemaDocType" type="text" placeholder="ex: invoice" /></div>
+        <div class="field"><label>Schema (JSON)</label><textarea id="schemaBody" rows="5" placeholder='{"type":"object","properties":{}}'></textarea></div>
+        <button id="saveSchemaBtn" class="primary-btn">Salvar schema</button>
+        <p id="schemaStatus" class="status ok"></p>
+        ${renderTable(
+          [
+            { key: "id", label: "ID" },
+            { key: "doc_type", label: "Tipo" },
+            { key: "is_active", label: "Ativo" },
+            { key: "schema", label: "Schema" },
+          ],
+          data.schemas,
+        )}
+      </section>
+    </div>
+  `;
+}
+
 function renderView(view, data) {
   if (view === "summary") return renderSummary(data);
   if (view === "usage") return renderUsage(data);
+  if (view === "configs") return renderConfigs(data);
   if (view === "emails") {
     return renderTable(
       [
@@ -105,6 +174,13 @@ function renderView(view, data) {
   );
 }
 
+function escapeHtml(text) {
+  return String(text)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
 function paintVersion() {
   versionLine.textContent = `version: ${state.version}`;
   buildLine.textContent = `build: ${state.build}`;
@@ -121,13 +197,40 @@ async function apiGet(path) {
   return await res.json();
 }
 
+async function apiPost(path, payload) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${state.token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HTTP ${res.status} - ${text}`);
+  }
+  return await res.json();
+}
+
 async function loadView() {
   if (!state.token) return;
-  panelTitle.textContent = state.currentView[0].toUpperCase() + state.currentView.slice(1);
+  panelTitle.textContent = viewTitle[state.currentView] || state.currentView;
   panelBody.innerHTML = `<div class="empty">Carregando...</div>`;
   try {
-    const data = await apiGet(endpoints[state.currentView]);
+    let data;
+    if (state.currentView === "configs") {
+      const [rules, prompts, schemas] = await Promise.all([
+        apiGet("/api/v1/configs/rules?limit=20"),
+        apiGet("/api/v1/configs/prompts?limit=20"),
+        apiGet("/api/v1/configs/schemas?limit=20"),
+      ]);
+      data = { rules, prompts, schemas };
+    } else {
+      data = await apiGet(endpoints[state.currentView]);
+    }
     panelBody.innerHTML = renderView(state.currentView, data);
+    if (state.currentView === "configs") bindConfigActions();
   } catch (err) {
     panelBody.innerHTML = `<div class="empty">Erro: ${err.message}</div>`;
   }
@@ -170,6 +273,102 @@ function logout() {
   localStorage.removeItem("epe_token");
   setAuthenticatedUI(false);
   panelBody.innerHTML = "";
+}
+
+function parseJsonField(text, statusEl) {
+  try {
+    return JSON.parse(text);
+  } catch (_err) {
+    statusEl.textContent = "JSON inválido.";
+    statusEl.classList.remove("ok");
+    return null;
+  }
+}
+
+function bindConfigActions() {
+  const ruleBtn = document.getElementById("saveRuleBtn");
+  const promptBtn = document.getElementById("savePromptBtn");
+  const schemaBtn = document.getElementById("saveSchemaBtn");
+
+  if (!ruleBtn || !promptBtn || !schemaBtn) return;
+
+  ruleBtn.addEventListener("click", async () => {
+    const status = document.getElementById("ruleStatus");
+    status.textContent = "";
+    status.classList.add("ok");
+
+    const rule_name = document.getElementById("ruleName").value.trim();
+    const definitionText = document.getElementById("ruleDefinition").value.trim();
+    if (!rule_name || !definitionText) {
+      status.textContent = "Preencha os campos da regra.";
+      status.classList.remove("ok");
+      return;
+    }
+
+    const definition = parseJsonField(definitionText, status);
+    if (!definition) return;
+
+    try {
+      await apiPost("/api/v1/configs/rules", { rule_name, definition });
+      status.textContent = "Regra salva com sucesso.";
+      status.classList.add("ok");
+      await loadView();
+    } catch (err) {
+      status.textContent = `Erro ao salvar regra: ${err.message}`;
+      status.classList.remove("ok");
+    }
+  });
+
+  promptBtn.addEventListener("click", async () => {
+    const status = document.getElementById("promptStatus");
+    status.textContent = "";
+    status.classList.add("ok");
+
+    const name = document.getElementById("promptName").value.trim();
+    const prompt = document.getElementById("promptBody").value.trim();
+    if (!name || !prompt) {
+      status.textContent = "Preencha os campos do prompt.";
+      status.classList.remove("ok");
+      return;
+    }
+
+    try {
+      await apiPost("/api/v1/configs/prompts", { name, prompt });
+      status.textContent = "Prompt salvo com sucesso.";
+      status.classList.add("ok");
+      await loadView();
+    } catch (err) {
+      status.textContent = `Erro ao salvar prompt: ${err.message}`;
+      status.classList.remove("ok");
+    }
+  });
+
+  schemaBtn.addEventListener("click", async () => {
+    const status = document.getElementById("schemaStatus");
+    status.textContent = "";
+    status.classList.add("ok");
+
+    const doc_type = document.getElementById("schemaDocType").value.trim();
+    const schemaText = document.getElementById("schemaBody").value.trim();
+    if (!doc_type || !schemaText) {
+      status.textContent = "Preencha os campos do schema.";
+      status.classList.remove("ok");
+      return;
+    }
+
+    const schema = parseJsonField(schemaText, status);
+    if (!schema) return;
+
+    try {
+      await apiPost("/api/v1/configs/schemas", { doc_type, schema });
+      status.textContent = "Schema salvo com sucesso.";
+      status.classList.add("ok");
+      await loadView();
+    } catch (err) {
+      status.textContent = `Erro ao salvar schema: ${err.message}`;
+      status.classList.remove("ok");
+    }
+  });
 }
 
 function bindMenu() {
