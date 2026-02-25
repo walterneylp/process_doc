@@ -150,7 +150,8 @@ async def test_analyze_document(
         errors.extend(extraction_errors)
         if extraction_errors:
             valid = False
-        if float(classification.get("confidence", 0)) < 0.75 and "low_confidence" not in errors:
+        enforce_confidence = bool(required_fields)
+        if enforce_confidence and float(classification.get("confidence", 0)) < 0.75 and "low_confidence" not in errors:
             errors.append("low_confidence")
             valid = False
 

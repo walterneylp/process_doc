@@ -233,7 +233,8 @@ def process_document(document_id: str) -> None:
         required_fields = schema.get("required", []) if isinstance(schema, dict) else []
         valid, errors = validator.validate(extracted, required_fields=required_fields)
         confidence = float(result.get("confidence", 0))
-        if confidence < 0.75 and "low_confidence" not in errors:
+        enforce_confidence = bool(required_fields)
+        if enforce_confidence and confidence < 0.75 and "low_confidence" not in errors:
             errors.append("low_confidence")
         if not valid:
             doc.needs_review = True

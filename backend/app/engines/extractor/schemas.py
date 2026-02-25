@@ -1,3 +1,14 @@
+GENERIC_DOCUMENT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "main_topic": {"type": "string"},
+        "summary": {"type": "string"},
+        "language": {"type": "string"},
+    },
+    "required": [],
+}
+
 TRAINING_CERT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -22,7 +33,7 @@ TRAINING_PRESENTATION_SCHEMA = {
     "required": ["course_name"],
 }
 
-DEFAULT_SCHEMA = {
+INVOICE_SCHEMA = {
     "type": "object",
     "properties": {
         "document_number": {"type": "string"},
@@ -37,8 +48,13 @@ DEFAULT_SCHEMA = {
     "required": ["document_number"],
 }
 
+DEFAULT_SCHEMA = GENERIC_DOCUMENT_SCHEMA
+
 
 BUILTIN_SCHEMA_BY_DOC_TYPE = {
+    "invoice": INVOICE_SCHEMA,
+    "fiscal_xml": INVOICE_SCHEMA,
+    "generic_document": GENERIC_DOCUMENT_SCHEMA,
     "training_certificate": TRAINING_CERT_SCHEMA,
     "training_presentation": TRAINING_PRESENTATION_SCHEMA,
 }

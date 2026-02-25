@@ -246,4 +246,35 @@ class ExtractionEngine:
             ]:
                 output.pop(field, None)
 
+        if doc_type in {None, "generic_document"}:
+            title_match = re.search(r"^\s*#\s+(.+)$", text, re.MULTILINE)
+            if title_match:
+                output["title"] = title_match.group(1).strip()
+
+            topic_match = re.search(r"^\s*##\s+(.+)$", text, re.MULTILINE)
+            if topic_match:
+                output["main_topic"] = topic_match.group(1).strip()
+            elif "title" in output:
+                output["main_topic"] = output["title"]
+
+            lines = [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+            if lines:
+                output["summary"] = " ".join(lines[:3])[:500]
+
+            if re.search(r"\b(the|and|with|this|that)\b", text.lower()):
+                output["language"] = "en"
+            elif re.search(r"\b(que|com|para|treinamento|documento)\b", text.lower()):
+                output["language"] = "pt-BR"
+
+            for field in [
+                "document_number",
+                "cnpj",
+                "taker_cnpj",
+                "access_key_nfse",
+                "iss_amount",
+                "services_amount",
+                "total_amount",
+            ]:
+                output.pop(field, None)
+
         return output
