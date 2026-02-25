@@ -11,6 +11,7 @@ from backend.app.db.models import (
     Document,
     Email,
     EmailAccount,
+    EmailAttachment,
     Extraction,
     Plan,
     Tenant,
@@ -20,11 +21,13 @@ from backend.app.db.session import SessionLocal
 from backend.app.domain.audit.service import log_event
 from backend.app.domain.billing.service import get_or_create_usage
 from backend.app.domain.document.service import create_document_from_attachment
-from backend.app.domain.email.service import create_email_if_missing
+from backend.app.domain.email.service import create_email_attachment, create_email_if_missing
+from backend.app.adapters.storage.local import LocalStorageAdapter
 from backend.app.engines.extractor.engine import ExtractionEngine
 from backend.app.engines.llm_classifier.engine import LLMClassifierEngine
 from backend.app.engines.rules_engine.engine import RulesEngine
 from backend.app.engines.validator.engine import ValidatorEngine
+from backend.app.utils.document_text import extract_text_from_file
 from backend.app.workers.celery_app import celery_app
 
 
@@ -67,6 +70,24 @@ def sync_email_account(account_id: str) -> None:
             msg["trace_id"] = uuid.uuid4().hex
             email = create_email_if_missing(db, account.tenant_id, account.id, msg)
             if email:
+                storage = LocalStorageAdapter()
+                for att in msg.get("attachments", []):
+                    filename = (att.get("filename") or "attachment.bin").strip() or "attachment.bin"
+                    file_path, sha256 = storage.save_attachment(
+                        str(account.tenant_id),
+                        str(email.id),
+                        filename,
+                        att.get("content", b""),
+                    )
+                    create_email_attachment(
+                        db=db,
+                        tenant_id=account.tenant_id,
+                        email_id=email.id,
+                        filename=filename,
+                        mime_type=att.get("mime_type"),
+                        file_path=file_path,
+                        sha256=sha256,
+                    )
                 process_email.delay(str(email.id))
                 log_event(
                     db,
@@ -96,19 +117,40 @@ def process_email(email_id: str) -> None:
             db.commit()
             return
 
-        # MVP: cria documento sintético sem parse real de anexo
-        doc = Document(
-            tenant_id=email.tenant_id,
-            email_id=email.id,
-            attachment_id=None,
-            doc_type="generic_document",
-            status="PROCESSING",
-            trace_id=email.trace_id,
-        )
-        db.add(doc)
+        attachments = db.query(EmailAttachment).filter(EmailAttachment.email_id == email.id).all()
+        created_docs = 0
+        if attachments:
+            for attachment in attachments:
+                doc = create_document_from_attachment(
+                    db=db,
+                    tenant_id=email.tenant_id,
+                    email_id=email.id,
+                    attachment_id=attachment.id,
+                    filename=attachment.filename or "attachment",
+                    trace_id=email.trace_id,
+                )
+                doc.status = "PROCESSING"
+                db.commit()
+                process_document.delay(str(doc.id))
+                created_docs += 1
+
+        # Fallback: processa com o conteúdo do corpo quando não há anexo.
+        if created_docs == 0:
+            doc = Document(
+                tenant_id=email.tenant_id,
+                email_id=email.id,
+                attachment_id=None,
+                doc_type="generic_document",
+                status="PROCESSING",
+                trace_id=email.trace_id,
+            )
+            db.add(doc)
+            db.commit()
+            db.refresh(doc)
+            process_document.delay(str(doc.id))
+
+        email.status = "PROCESSING"
         db.commit()
-        db.refresh(doc)
-        process_document.delay(str(doc.id))
     finally:
         db.close()
 
@@ -122,6 +164,26 @@ def process_document(document_id: str) -> None:
             return
 
         email = db.query(Email).filter(Email.id == doc.email_id).first()
+        if not email:
+            return
+
+        attachment = None
+        attachment_text = ""
+        attachment_name = None
+        if doc.attachment_id:
+            attachment = db.query(EmailAttachment).filter(EmailAttachment.id == doc.attachment_id).first()
+            if attachment:
+                attachment_name = attachment.filename
+                attachment_text = extract_text_from_file(attachment.file_path, attachment.mime_type)
+
+        context_chunks = [
+            f"Assunto: {email.subject or ''}",
+            f"Remetente: {email.sender or ''}",
+            f"Corpo: {email.body_text or ''}",
+            f"Texto do anexo: {attachment_text}",
+        ]
+        analysis_content = "\n\n".join(chunk for chunk in context_chunks if chunk.strip())
+
         plan = _tenant_plan(db, doc.tenant_id)
         usage = get_or_create_usage(db, doc.tenant_id)
 
@@ -130,7 +192,7 @@ def process_document(document_id: str) -> None:
         extraction_engine = ExtractionEngine()
         validator = ValidatorEngine()
 
-        rr = rules_engine.classify(email.sender or "", email.subject or "")
+        rr = rules_engine.classify(email.sender or "", email.subject or "", attachment_name)
         if rr.confidence >= 0.85:
             result = {
                 "category": rr.category,
@@ -145,7 +207,7 @@ def process_document(document_id: str) -> None:
                 doc.status = "FAILED"
                 db.commit()
                 return
-            payload = llm_engine.classify(email.subject or "", email.sender or "", email.body_text or "")
+            payload = llm_engine.classify(email.subject or "", email.sender or "", analysis_content)
             usage.llm_calls += 1
             result = {**payload, "source": "llm"}
 
@@ -162,11 +224,14 @@ def process_document(document_id: str) -> None:
         db.add(classification)
         db.flush()
 
-        extracted = extraction_engine.extract(db, doc.tenant_id, doc.doc_type or "generic_document", email.body_text or "")
+        extracted = extraction_engine.extract(db, doc.tenant_id, doc.doc_type or "generic_document", analysis_content)
         extraction = Extraction(tenant_id=doc.tenant_id, document_id=doc.id, data=extracted)
         db.add(extraction)
 
         valid, errors = validator.validate(extracted)
+        confidence = float(result.get("confidence", 0))
+        if confidence < 0.75 and "low_confidence" not in errors:
+            errors.append("low_confidence")
         if not valid:
             doc.needs_review = True
             db.add(
@@ -179,6 +244,8 @@ def process_document(document_id: str) -> None:
                     trace_id=doc.trace_id,
                 )
             )
+        elif confidence < 0.75:
+            doc.needs_review = True
 
         routing = (
             db.query(TenantRule)

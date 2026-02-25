@@ -12,18 +12,35 @@ class OpenAIProvider(LLMProvider):
         self.model = settings.openai_model
         self.client = OpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
 
-    def _fallback(self) -> dict:
+    def _fallback(self, prompt: str) -> dict:
+        text = (prompt or "").lower()
+        if any(k in text for k in ["nota fiscal", "nf-e", "nfe", "cnpj"]):
+            return {
+                "category": "fiscal",
+                "department": "financeiro",
+                "confidence": 0.82,
+                "priority": "high",
+                "reason": "fallback_keyword_fiscal",
+            }
+        if any(k in text for k in ["boleto", "pagamento", "vencimento"]):
+            return {
+                "category": "financeiro",
+                "department": "financeiro",
+                "confidence": 0.8,
+                "priority": "high",
+                "reason": "fallback_keyword_financeiro",
+            }
         return {
             "category": "generic",
             "department": "triage",
-            "confidence": 0.6,
+            "confidence": 0.65,
             "priority": "normal",
             "reason": "fallback_no_api_key",
         }
 
     def classify(self, prompt: str) -> dict:
         if not self.client:
-            return self._fallback()
+            return self._fallback(prompt)
         response = self.client.responses.create(
             model=self.model,
             input=prompt,

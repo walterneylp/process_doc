@@ -48,3 +48,38 @@ def create_email_if_missing(db: Session, tenant_id, account_id, payload: dict) -
     db.commit()
     db.refresh(item)
     return item
+
+
+def create_email_attachment(
+    db: Session,
+    tenant_id,
+    email_id,
+    filename: str,
+    mime_type: str | None,
+    file_path: str,
+    sha256: str,
+) -> models.EmailAttachment:
+    existing = (
+        db.query(models.EmailAttachment)
+        .filter(
+            models.EmailAttachment.tenant_id == tenant_id,
+            models.EmailAttachment.email_id == email_id,
+            models.EmailAttachment.sha256 == sha256,
+        )
+        .first()
+    )
+    if existing:
+        return existing
+
+    item = models.EmailAttachment(
+        tenant_id=tenant_id,
+        email_id=email_id,
+        filename=filename,
+        file_path=file_path,
+        sha256=sha256,
+        mime_type=mime_type,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
