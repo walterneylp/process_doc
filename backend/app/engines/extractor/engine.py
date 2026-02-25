@@ -42,24 +42,62 @@ class ExtractionEngine:
     def _local_extract(self, content: str) -> dict:
         text = content or ""
         output: dict = {}
+        text_norm = re.sub(r"[ \t]+", " ", text)
+
+        def parse_brl_amount(raw: str) -> float | None:
+            if raw is None:
+                return None
+            value = raw.strip()
+            value = value.replace("R$", "").replace(" ", "")
+            if "," in value:
+                value = value.replace(".", "").replace(",", ".")
+            try:
+                return float(value)
+            except ValueError:
+                return None
 
         # número do documento
-        doc_match = re.search(r"(?:nota\s*fiscal|n[úu]mero|numero|doc(?:umento)?)[^\d]{0,20}(\d{3,})", text, re.IGNORECASE)
+        doc_match = re.search(
+            r"n[úu]mero\s+da\s+nfs-?e[^\d]{0,120}(\d{1,12})",
+            text_norm,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if not doc_match:
+            doc_match = re.search(r"(?:nota\s*fiscal|n[úu]mero|numero|doc(?:umento)?)[^\d]{0,80}(\d{3,})", text, re.IGNORECASE)
         if doc_match:
             output["document_number"] = doc_match.group(1)
 
         # CNPJ
-        cnpj_match = re.search(r"(\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2})", text)
+        # Prioriza CNPJ formatado (com /), evitando capturar a chave de acesso.
+        cnpj_match = re.search(r"(\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})", text)
+        if not cnpj_match:
+            cnpj_match = re.search(r"(\d{2}\d{3}\d{3}/\d{4}-\d{2})", text)
+        if not cnpj_match:
+            cnpj_match = re.search(r"(\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2})", text)
         if cnpj_match:
             output["cnpj"] = re.sub(r"\D", "", cnpj_match.group(1))
 
         # Valor total
-        amount_match = re.search(r"(?:total|valor)[^\d]{0,20}(\d+[\.,]\d{2})", text, re.IGNORECASE)
+        amount_patterns = [
+            r"valor\s+total\s+da\s+nfs-?e[^\d]{0,40}(R?\$?\s*[\d\.\,]+)",
+            r"valor\s+l[íi]quido[^\d]{0,40}(R?\$?\s*[\d\.\,]+)",
+            r"valor\s+dos\s+servi[cç]os[^\d]{0,40}(R?\$?\s*[\d\.\,]+)",
+            r"(?:total|valor)[^\d]{0,30}(R?\$?\s*[\d\.\,]+)",
+        ]
+        amount_match = None
+        for pattern in amount_patterns:
+            amount_match = re.search(pattern, text_norm, re.IGNORECASE | re.DOTALL)
+            if amount_match:
+                break
         if amount_match:
-            output["total_amount"] = float(amount_match.group(1).replace(".", "").replace(",", "."))
+            amount = parse_brl_amount(amount_match.group(1))
+            if amount is not None:
+                output["total_amount"] = amount
 
         # Data simples dd/mm/yyyy
-        date_match = re.search(r"(\d{2}/\d{2}/\d{4})", text)
+        date_match = re.search(r"data\s+e\s+hora\s+da\s+emiss[aã]o[^\d]{0,30}(\d{2}/\d{2}/\d{4})", text_norm, re.IGNORECASE)
+        if not date_match:
+            date_match = re.search(r"(\d{2}/\d{2}/\d{4})", text)
         if date_match:
             d, m, y = date_match.group(1).split("/")
             output["issue_date"] = f"{y}-{m}-{d}"
