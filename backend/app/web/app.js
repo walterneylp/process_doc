@@ -1,8 +1,8 @@
 const state = {
   token: localStorage.getItem("epe_token") || "",
   currentView: "summary",
-  version: "v0.4.0",
-  build: "2026.02.25-local-03",
+  version: "v0.5.0",
+  build: "2026.02.25-local-04",
 };
 
 const endpoints = {
@@ -31,6 +31,7 @@ const viewTitle = {
   documents: "Documentos",
   review: "Revisão",
   configs: "Configurações",
+  "test-ai": "Teste IA",
 };
 
 function statusBadge(status) {
@@ -138,10 +139,47 @@ function renderConfigs(data) {
   `;
 }
 
+function renderTestAi() {
+  return `
+    <div class="card-lite">
+      <h3>Teste de Classificação e Extração</h3>
+      <div class="field"><label>Arquivo (PDF / imagem / texto)</label><input id="testFile" type="file" /></div>
+      <div class="field"><label>Assunto</label><input id="testSubject" type="text" placeholder="ex: NF-e 1234 fornecedor X" /></div>
+      <div class="field"><label>Remetente</label><input id="testSender" type="text" placeholder="ex: financeiro@fornecedor.com" /></div>
+      <div class="field"><label>Corpo do email (opcional)</label><textarea id="testBody" rows="4" placeholder="Texto adicional do email"></textarea></div>
+      <button id="runTestAiBtn" class="primary-btn">Analisar Arquivo</button>
+      <p id="testAiStatus" class="status"></p>
+      <div id="testAiResult"></div>
+    </div>
+  `;
+}
+
+function renderTestAiResult(data) {
+  return `
+    <div class="test-result-grid">
+      <div class="metric"><h4>Arquivo</h4><div class="value test-small">${data.filename || "-"}</div></div>
+      <div class="metric"><h4>Tipo</h4><div class="value test-small">${data.doc_type || "-"}</div></div>
+      <div class="metric"><h4>Revisão</h4><div class="value test-small">${data.needs_review ? "Sim" : "Não"}</div></div>
+      <div class="metric"><h4>Válido</h4><div class="value test-small">${data.valid ? "Sim" : "Não"}</div></div>
+    </div>
+    <div class="table-card">
+      <table>
+        <tbody>
+          <tr><th>Classificação</th><td><pre class="json-mini">${escapeHtml(JSON.stringify(data.classification || {}, null, 2))}</pre></td></tr>
+          <tr><th>Extração</th><td><pre class="json-mini">${escapeHtml(JSON.stringify(data.extraction || {}, null, 2))}</pre></td></tr>
+          <tr><th>Erros</th><td><pre class="json-mini">${escapeHtml(JSON.stringify(data.errors || [], null, 2))}</pre></td></tr>
+          <tr><th>Texto extraído (preview)</th><td><pre class="json-mini">${escapeHtml(data.text_preview || "")}</pre></td></tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 function renderView(view, data) {
   if (view === "summary") return renderSummary(data);
   if (view === "usage") return renderUsage(data);
   if (view === "configs") return renderConfigs(data);
+  if (view === "test-ai") return renderTestAi();
   if (view === "emails") {
     return renderTable(
       [
@@ -213,6 +251,19 @@ async function apiPost(path, payload) {
   return await res.json();
 }
 
+async function apiPostForm(path, formData) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${state.token}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HTTP ${res.status} - ${text}`);
+  }
+  return await res.json();
+}
+
 async function loadView() {
   if (!state.token) return;
   panelTitle.textContent = viewTitle[state.currentView] || state.currentView;
@@ -226,11 +277,14 @@ async function loadView() {
         apiGet("/api/v1/configs/schemas?limit=20"),
       ]);
       data = { rules, prompts, schemas };
+    } else if (state.currentView === "test-ai") {
+      data = {};
     } else {
       data = await apiGet(endpoints[state.currentView]);
     }
     panelBody.innerHTML = renderView(state.currentView, data);
     if (state.currentView === "configs") bindConfigActions();
+    if (state.currentView === "test-ai") bindTestAiActions();
   } catch (err) {
     panelBody.innerHTML = `<div class="empty">Erro: ${err.message}</div>`;
   }
@@ -366,6 +420,46 @@ function bindConfigActions() {
       await loadView();
     } catch (err) {
       status.textContent = `Erro ao salvar schema: ${err.message}`;
+      status.classList.remove("ok");
+    }
+  });
+}
+
+function bindTestAiActions() {
+  const button = document.getElementById("runTestAiBtn");
+  if (!button) return;
+
+  button.addEventListener("click", async () => {
+    const status = document.getElementById("testAiStatus");
+    const result = document.getElementById("testAiResult");
+    const fileInput = document.getElementById("testFile");
+    const subject = document.getElementById("testSubject").value.trim();
+    const sender = document.getElementById("testSender").value.trim();
+    const body_text = document.getElementById("testBody").value.trim();
+
+    status.textContent = "";
+    status.classList.remove("ok");
+    result.innerHTML = "";
+
+    if (!fileInput.files || !fileInput.files[0]) {
+      status.textContent = "Selecione um arquivo para análise.";
+      return;
+    }
+
+    const form = new FormData();
+    form.append("file", fileInput.files[0]);
+    form.append("subject", subject);
+    form.append("sender", sender);
+    form.append("body_text", body_text);
+
+    try {
+      status.textContent = "Processando...";
+      status.classList.add("ok");
+      const data = await apiPostForm("/api/v1/documents/test-analyze", form);
+      status.textContent = "Análise concluída.";
+      result.innerHTML = renderTestAiResult(data);
+    } catch (err) {
+      status.textContent = `Erro na análise: ${err.message}`;
       status.classList.remove("ok");
     }
   });

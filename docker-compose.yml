@@ -16,9 +16,11 @@ services:
       - "6385:6379"
 
   backend:
-    image: python:3.11-slim
+    build:
+      context: .
+      dockerfile: Dockerfile
     working_dir: /app
-    command: bash -lc "pip install -r requirements.txt && uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload"
+    command: bash -lc "uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload"
     env_file:
       - .env
     ports:
@@ -30,9 +32,11 @@ services:
       - redis
 
   worker:
-    image: python:3.11-slim
+    build:
+      context: .
+      dockerfile: Dockerfile
     working_dir: /app
-    command: bash -lc "pip install -r requirements.txt && celery -A backend.app.workers.celery_app.celery_app worker -l info"
+    command: bash -lc "celery -A backend.app.workers.celery_app.celery_app worker -l info"
     env_file:
       - .env
     volumes:

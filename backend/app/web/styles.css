@@ -132,6 +132,18 @@ textarea {
   gap: 12px;
 }
 
+.test-result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.test-small {
+  font-size: 15px !important;
+  word-break: break-word;
+}
+
 .table-card {
   border: 1px solid var(--line);
   border-radius: 10px;
