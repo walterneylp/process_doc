@@ -124,8 +124,13 @@ function renderReview(items) {
         <div class="field"><label>Prioridade</label><input id="reviewPriority" type="text" placeholder="normal / high" /></div>
         <div class="field"><label>Motivo</label><input id="reviewReason" type="text" placeholder="justificativa manual" /></div>
         <div class="field"><label>Extração (JSON opcional)</label><textarea id="reviewExtraction" rows="5" placeholder='{\"campo\":\"valor\"}'></textarea></div>
-        <button id="approveReviewBtn" class="primary-btn">Aprovar Revisão</button>
+        <div class="toolbar-actions">
+          <button id="approveReviewBtn" class="primary-btn">Aprovar Revisão</button>
+          <button id="reprocessReviewBtn" class="secondary-btn">Reprocessar</button>
+          <button id="loadReviewHistoryBtn" class="secondary-btn">Carregar Histórico</button>
+        </div>
         <p id="reviewStatus" class="status"></p>
+        <div id="reviewHistory"></div>
       </section>
     </div>
   `;
@@ -374,9 +379,14 @@ async function loadView() {
 }
 
 function bindReviewActions() {
-  const button = document.getElementById("approveReviewBtn");
-  if (!button) return;
-  button.addEventListener("click", async () => {
+  const approveBtn = document.getElementById("approveReviewBtn");
+  const reprocessBtn = document.getElementById("reprocessReviewBtn");
+  const historyBtn = document.getElementById("loadReviewHistoryBtn");
+  if (!approveBtn || !reprocessBtn || !historyBtn) return;
+
+  const getDocumentId = () => document.getElementById("reviewDocId").value.trim();
+
+  approveBtn.addEventListener("click", async () => {
     const status = document.getElementById("reviewStatus");
     status.textContent = "";
     status.classList.remove("ok");
@@ -416,6 +426,62 @@ function bindReviewActions() {
       await loadView();
     } catch (err) {
       status.textContent = `Erro ao aprovar revisão: ${err.message}`;
+    }
+  });
+
+  reprocessBtn.addEventListener("click", async () => {
+    const status = document.getElementById("reviewStatus");
+    status.textContent = "";
+    status.classList.remove("ok");
+    const documentId = getDocumentId();
+    if (!documentId) {
+      status.textContent = "Informe o ID do documento.";
+      return;
+    }
+    try {
+      await apiPost(`/api/v1/review/${documentId}/reprocess`, {});
+      status.textContent = "Reprocessamento enfileirado.";
+      status.classList.add("ok");
+      await loadView();
+    } catch (err) {
+      status.textContent = `Erro ao reprocessar: ${err.message}`;
+    }
+  });
+
+  historyBtn.addEventListener("click", async () => {
+    const status = document.getElementById("reviewStatus");
+    const target = document.getElementById("reviewHistory");
+    status.textContent = "";
+    const documentId = getDocumentId();
+    if (!documentId) {
+      status.textContent = "Informe o ID do documento.";
+      return;
+    }
+    try {
+      const items = await apiGet(`/api/v1/review/${documentId}/history?limit=30`);
+      const rows = (items || []).map((i) => ({
+        created_at: i.created_at ? new Date(i.created_at).toLocaleString("pt-BR") : "-",
+        event_type: i.event_type,
+        actor: i.payload?.approver_email || i.payload?.requester_email || "-",
+        changed_fields: (i.payload?.changed_fields || []).join(", ") || "-",
+        payload: i.payload || {},
+      }));
+      target.innerHTML = renderTable(
+        [
+          { key: "created_at", label: "Data/Hora" },
+          { key: "event_type", label: "Evento" },
+          { key: "actor", label: "Usuário" },
+          { key: "changed_fields", label: "Campos Alterados" },
+          { key: "payload", label: "Detalhes" },
+        ],
+        rows,
+      );
+      status.textContent = "Histórico carregado.";
+      status.classList.add("ok");
+    } catch (err) {
+      target.innerHTML = "";
+      status.textContent = `Erro ao carregar histórico: ${err.message}`;
+      status.classList.remove("ok");
     }
   });
 }
