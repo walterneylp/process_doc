@@ -88,13 +88,31 @@ async def test_analyze_document(
                 "source": "rules",
             }
         else:
-            payload = llm_engine.classify(subject, sender, analysis_content)
-            classification = {**payload, "source": "llm"}
+            try:
+                payload = llm_engine.classify(subject, sender, analysis_content)
+                classification = {**payload, "source": "llm"}
+            except Exception as exc:
+                classification = {
+                    "category": "generic",
+                    "department": "triage",
+                    "confidence": 0.5,
+                    "priority": "normal",
+                    "reason": f"llm_error:{exc}",
+                    "source": "fallback",
+                }
 
         doc_type = infer_doc_type(file.filename or "upload.bin")
-        extraction = extraction_engine.extract(db, current_user.tenant_id, doc_type, analysis_content)
+        extraction_errors: list[str] = []
+        try:
+            extraction = extraction_engine.extract(db, current_user.tenant_id, doc_type, analysis_content)
+        except Exception as exc:
+            extraction = {}
+            extraction_errors.append(f"extraction_error:{exc}")
 
         valid, errors = validator.validate(extraction)
+        errors.extend(extraction_errors)
+        if extraction_errors:
+            valid = False
         if float(classification.get("confidence", 0)) < 0.75 and "low_confidence" not in errors:
             errors.append("low_confidence")
             valid = False
