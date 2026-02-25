@@ -15,18 +15,67 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 def summary(db: DbDep, current_user: Annotated[models.User, Depends(get_current_user)]):
     emails = db.query(func.count(models.Email.id)).filter(models.Email.tenant_id == current_user.tenant_id).scalar()
     docs = db.query(func.count(models.Document.id)).filter(models.Document.tenant_id == current_user.tenant_id).scalar()
+    done_docs = (
+        db.query(func.count(models.Document.id))
+        .filter(models.Document.tenant_id == current_user.tenant_id, models.Document.status == "DONE")
+        .scalar()
+    )
     review = (
         db.query(func.count(models.Document.id))
         .filter(models.Document.tenant_id == current_user.tenant_id, models.Document.needs_review == True)
         .scalar()
     )
-    return {"emails": emails, "documents": docs, "needs_review": review}
+    review_rate = round((review / docs) * 100, 2) if docs else 0.0
+    approval_rate = round(((docs - review) / docs) * 100, 2) if docs else 0.0
+    return {
+        "emails": emails,
+        "documents": docs,
+        "done_documents": done_docs,
+        "needs_review": review,
+        "review_rate": review_rate,
+        "approval_rate": approval_rate,
+    }
 
 
 @router.get("/usage")
 def usage(db: DbDep, current_user: Annotated[models.User, Depends(get_current_user)]):
     item = get_or_create_usage(db, current_user.tenant_id)
-    return {"period": item.period, "emails_processed": item.emails_processed, "llm_calls": item.llm_calls}
+    docs = db.query(func.count(models.Document.id)).filter(models.Document.tenant_id == current_user.tenant_id).scalar()
+    done_docs = (
+        db.query(func.count(models.Document.id))
+        .filter(models.Document.tenant_id == current_user.tenant_id, models.Document.status == "DONE")
+        .scalar()
+    )
+    manual_reviews = (
+        db.query(func.count(models.Classification.id))
+        .filter(models.Classification.tenant_id == current_user.tenant_id, models.Classification.source == "manual")
+        .scalar()
+    )
+    avg_processing_seconds = (
+        db.query(
+            func.avg(
+                func.extract(
+                    "epoch",
+                    models.Document.updated_at - models.Document.created_at,
+                )
+            )
+        )
+        .filter(
+            models.Document.tenant_id == current_user.tenant_id,
+            models.Document.status == "DONE",
+            models.Document.updated_at.isnot(None),
+        )
+        .scalar()
+    )
+    success_rate = round((done_docs / docs) * 100, 2) if docs else 0.0
+    return {
+        "period": item.period,
+        "emails_processed": item.emails_processed,
+        "llm_calls": item.llm_calls,
+        "manual_reviews": manual_reviews,
+        "success_rate": success_rate,
+        "avg_processing_seconds": round(float(avg_processing_seconds), 2) if avg_processing_seconds else 0.0,
+    }
 
 
 @router.get("/html", response_class=HTMLResponse)

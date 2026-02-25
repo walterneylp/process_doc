@@ -1,9 +1,11 @@
 import uuid
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
 from backend.app.adapters.email.imap_client import ImapClientAdapter
 from backend.app.adapters.notify.email_notify import EmailNotifyAdapter
+from backend.app.adapters.notify.webhook_notify import WebhookNotifyAdapter
 from backend.app.core.limits import can_call_llm, can_process_email
 from backend.app.db.models import (
     Classification,
@@ -15,13 +17,13 @@ from backend.app.db.models import (
     Extraction,
     Plan,
     Tenant,
-    TenantRule,
 )
 from backend.app.db.session import SessionLocal
 from backend.app.domain.audit.service import log_event
 from backend.app.domain.billing.service import get_or_create_usage
 from backend.app.domain.document.service import create_document_from_attachment
 from backend.app.domain.email.service import create_email_attachment, create_email_if_missing
+from backend.app.domain.routing.service import route_for_classification
 from backend.app.adapters.storage.local import LocalStorageAdapter
 from backend.app.engines.extractor.engine import ExtractionEngine
 from backend.app.engines.llm_classifier.engine import LLMClassifierEngine
@@ -206,6 +208,7 @@ def process_document(document_id: str) -> None:
         else:
             if plan and not can_call_llm(plan, usage):
                 doc.status = "FAILED"
+                doc.updated_at = datetime.utcnow()
                 db.commit()
                 return
             payload = llm_engine.classify(email.subject or "", email.sender or "", analysis_content)
@@ -251,21 +254,35 @@ def process_document(document_id: str) -> None:
         elif confidence < 0.75:
             doc.needs_review = True
 
-        routing = (
-            db.query(TenantRule)
-            .filter(TenantRule.tenant_id == doc.tenant_id, TenantRule.is_active == True)
-            .first()
+        routing = route_for_classification(
+            db,
+            doc.tenant_id,
+            doc.doc_type or "generic_document",
+            classification.category,
+            classification.priority,
         )
-        notify_emails = []
-        if routing and routing.definition:
-            notify_emails = routing.definition.get("emails", [])
+        notify_emails = routing.get("emails", []) if routing else []
         EmailNotifyAdapter().send(
             recipients=notify_emails,
             subject=f"Novo documento {classification.category}",
             body=f"Documento {doc.id} prioridade {classification.priority}",
         )
+        if routing and routing.get("webhook_url"):
+            WebhookNotifyAdapter().send(
+                routing.get("webhook_url"),
+                {
+                    "document_id": str(doc.id),
+                    "trace_id": doc.trace_id,
+                    "doc_type": doc.doc_type,
+                    "category": classification.category,
+                    "priority": classification.priority,
+                    "needs_review": doc.needs_review,
+                    "extraction": extracted,
+                },
+            )
 
         doc.status = "DONE"
+        doc.updated_at = datetime.utcnow()
         usage.emails_processed += 1
         email.status = "DONE"
         db.commit()
@@ -284,6 +301,7 @@ def process_document(document_id: str) -> None:
         item = db.query(Document).filter(Document.id == document_id).first()
         if item:
             item.status = "FAILED"
+            item.updated_at = datetime.utcnow()
             db.add(
                 DeadLetter(
                     tenant_id=item.tenant_id,

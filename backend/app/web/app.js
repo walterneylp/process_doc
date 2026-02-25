@@ -1,8 +1,8 @@
 const state = {
   token: localStorage.getItem("epe_token") || "",
   currentView: "summary",
-  version: "v0.5.1",
-  build: "2026.02.25-local-05",
+  version: "v0.6.0",
+  build: "2026.02.25-local-06",
 };
 
 const endpoints = {
@@ -67,7 +67,10 @@ function renderSummary(data) {
     <div class="cards-grid">
       <div class="metric"><h4>Emails</h4><div class="value">${data.emails ?? 0}</div></div>
       <div class="metric"><h4>Documentos</h4><div class="value">${data.documents ?? 0}</div></div>
+      <div class="metric"><h4>Concluídos</h4><div class="value">${data.done_documents ?? 0}</div></div>
       <div class="metric"><h4>Precisa Revisão</h4><div class="value">${data.needs_review ?? 0}</div></div>
+      <div class="metric"><h4>% Revisão</h4><div class="value">${data.review_rate ?? 0}%</div></div>
+      <div class="metric"><h4>% Aprovação Auto</h4><div class="value">${data.approval_rate ?? 0}%</div></div>
     </div>
   `;
 }
@@ -78,6 +81,52 @@ function renderUsage(data) {
       <div class="metric"><h4>Período</h4><div class="value" style="font-size:18px;">${data.period ?? "-"}</div></div>
       <div class="metric"><h4>Emails Processados</h4><div class="value">${data.emails_processed ?? 0}</div></div>
       <div class="metric"><h4>Chamadas LLM</h4><div class="value">${data.llm_calls ?? 0}</div></div>
+      <div class="metric"><h4>Revisões Manuais</h4><div class="value">${data.manual_reviews ?? 0}</div></div>
+      <div class="metric"><h4>% Sucesso</h4><div class="value">${data.success_rate ?? 0}%</div></div>
+      <div class="metric"><h4>Tempo Médio</h4><div class="value">${data.avg_processing_seconds ?? 0}s</div></div>
+    </div>
+  `;
+}
+
+function renderReview(items) {
+  const rows = (items || []).map((item) => {
+    const cls = item.classification || {};
+    return {
+      id: item.id,
+      doc_type: item.doc_type || "-",
+      status: item.status || "-",
+      category: cls.category || "-",
+      confidence: cls.confidence ?? "-",
+      trace_id: item.trace_id || "-",
+    };
+  });
+  return `
+    <div class="configs-grid">
+      <section class="card-lite">
+        <h3>Fila de Revisão</h3>
+        ${renderTable(
+          [
+            { key: "id", label: "ID" },
+            { key: "doc_type", label: "Tipo" },
+            { key: "status", label: "Status" },
+            { key: "category", label: "Categoria" },
+            { key: "confidence", label: "Conf." },
+            { key: "trace_id", label: "Trace" },
+          ],
+          rows,
+        )}
+        <div class="field">
+          <label>ID do documento para aprovar</label>
+          <input id="reviewDocId" type="text" placeholder="cole o ID da tabela" />
+        </div>
+        <div class="field"><label>Categoria</label><input id="reviewCategory" type="text" placeholder="ex: fiscal" /></div>
+        <div class="field"><label>Departamento</label><input id="reviewDepartment" type="text" placeholder="ex: financeiro" /></div>
+        <div class="field"><label>Prioridade</label><input id="reviewPriority" type="text" placeholder="normal / high" /></div>
+        <div class="field"><label>Motivo</label><input id="reviewReason" type="text" placeholder="justificativa manual" /></div>
+        <div class="field"><label>Extração (JSON opcional)</label><textarea id="reviewExtraction" rows="5" placeholder='{\"campo\":\"valor\"}'></textarea></div>
+        <button id="approveReviewBtn" class="primary-btn">Aprovar Revisão</button>
+        <p id="reviewStatus" class="status"></p>
+      </section>
     </div>
   `;
 }
@@ -133,6 +182,27 @@ function renderConfigs(data) {
             { key: "schema", label: "Schema" },
           ],
           data.schemas,
+        )}
+      </section>
+
+      <section class="card-lite">
+        <h3>Rotas (Tipo/Categoria -> Email/Webhook)</h3>
+        <div class="field"><label>Tipo documento (opcional)</label><input id="routeDocType" type="text" placeholder="ex: invoice" /></div>
+        <div class="field"><label>Categoria (opcional)</label><input id="routeCategory" type="text" placeholder="ex: fiscal" /></div>
+        <div class="field"><label>Prioridade (opcional)</label><input id="routePriority" type="text" placeholder="normal | high" /></div>
+        <div class="field"><label>Departamento (opcional)</label><input id="routeDepartment" type="text" placeholder="financeiro" /></div>
+        <div class="field"><label>Emails (separados por vírgula)</label><input id="routeEmails" type="text" placeholder="a@empresa.com,b@empresa.com" /></div>
+        <div class="field"><label>Webhook URL (opcional)</label><input id="routeWebhook" type="text" placeholder="https://seu-endpoint/webhook" /></div>
+        <button id="saveRouteBtn" class="primary-btn">Salvar rota</button>
+        <p id="routeStatus" class="status ok"></p>
+        ${renderTable(
+          [
+            { key: "id", label: "ID" },
+            { key: "rule_name", label: "Nome" },
+            { key: "is_active", label: "Ativa" },
+            { key: "definition", label: "Definição" },
+          ],
+          data.routes,
         )}
       </section>
     </div>
@@ -197,6 +267,7 @@ function renderView(view, data) {
   if (view === "usage") return renderUsage(data);
   if (view === "configs") return renderConfigs(data);
   if (view === "test-ai") return renderTestAi();
+  if (view === "review") return renderReview(data);
   if (view === "emails") {
     return renderTable(
       [
@@ -219,14 +290,7 @@ function renderView(view, data) {
       data,
     );
   }
-  return renderTable(
-    [
-      { key: "id", label: "ID" },
-      { key: "status", label: "Status" },
-      { key: "trace_id", label: "Trace" },
-    ],
-    data,
-  );
+  return `<div class="empty">Sem visualização para esta aba.</div>`;
 }
 
 function escapeHtml(text) {
@@ -288,12 +352,13 @@ async function loadView() {
   try {
     let data;
     if (state.currentView === "configs") {
-      const [rules, prompts, schemas] = await Promise.all([
+      const [rules, prompts, schemas, routes] = await Promise.all([
         apiGet("/api/v1/configs/rules?limit=20"),
         apiGet("/api/v1/configs/prompts?limit=20"),
         apiGet("/api/v1/configs/schemas?limit=20"),
+        apiGet("/api/v1/configs/routes?limit=20"),
       ]);
-      data = { rules, prompts, schemas };
+      data = { rules, prompts, schemas, routes };
     } else if (state.currentView === "test-ai") {
       data = {};
     } else {
@@ -302,9 +367,57 @@ async function loadView() {
     panelBody.innerHTML = renderView(state.currentView, data);
     if (state.currentView === "configs") bindConfigActions();
     if (state.currentView === "test-ai") bindTestAiActions();
+    if (state.currentView === "review") bindReviewActions();
   } catch (err) {
     panelBody.innerHTML = `<div class="empty">Erro: ${err.message}</div>`;
   }
+}
+
+function bindReviewActions() {
+  const button = document.getElementById("approveReviewBtn");
+  if (!button) return;
+  button.addEventListener("click", async () => {
+    const status = document.getElementById("reviewStatus");
+    status.textContent = "";
+    status.classList.remove("ok");
+
+    const documentId = document.getElementById("reviewDocId").value.trim();
+    const category = document.getElementById("reviewCategory").value.trim();
+    const department = document.getElementById("reviewDepartment").value.trim();
+    const priority = document.getElementById("reviewPriority").value.trim();
+    const reason = document.getElementById("reviewReason").value.trim();
+    const extractionText = document.getElementById("reviewExtraction").value.trim();
+
+    if (!documentId) {
+      status.textContent = "Informe o ID do documento.";
+      return;
+    }
+
+    let extraction = undefined;
+    if (extractionText) {
+      try {
+        extraction = JSON.parse(extractionText);
+      } catch (_err) {
+        status.textContent = "Extração JSON inválida.";
+        return;
+      }
+    }
+
+    try {
+      await apiPost(`/api/v1/review/${documentId}/approve`, {
+        category: category || undefined,
+        department: department || undefined,
+        priority: priority || undefined,
+        reason: reason || undefined,
+        extraction,
+      });
+      status.textContent = "Documento aprovado com sucesso.";
+      status.classList.add("ok");
+      await loadView();
+    } catch (err) {
+      status.textContent = `Erro ao aprovar revisão: ${err.message}`;
+    }
+  });
 }
 
 function setAuthenticatedUI(authenticated) {
@@ -360,8 +473,9 @@ function bindConfigActions() {
   const ruleBtn = document.getElementById("saveRuleBtn");
   const promptBtn = document.getElementById("savePromptBtn");
   const schemaBtn = document.getElementById("saveSchemaBtn");
+  const routeBtn = document.getElementById("saveRouteBtn");
 
-  if (!ruleBtn || !promptBtn || !schemaBtn) return;
+  if (!ruleBtn || !promptBtn || !schemaBtn || !routeBtn) return;
 
   ruleBtn.addEventListener("click", async () => {
     const status = document.getElementById("ruleStatus");
@@ -437,6 +551,42 @@ function bindConfigActions() {
       await loadView();
     } catch (err) {
       status.textContent = `Erro ao salvar schema: ${err.message}`;
+      status.classList.remove("ok");
+    }
+  });
+
+  routeBtn.addEventListener("click", async () => {
+    const status = document.getElementById("routeStatus");
+    status.textContent = "";
+    status.classList.add("ok");
+
+    const doc_type = document.getElementById("routeDocType").value.trim();
+    const category = document.getElementById("routeCategory").value.trim();
+    const priority = document.getElementById("routePriority").value.trim();
+    const department = document.getElementById("routeDepartment").value.trim();
+    const emailsRaw = document.getElementById("routeEmails").value.trim();
+    const webhook_url = document.getElementById("routeWebhook").value.trim();
+    const emails = emailsRaw
+      ? emailsRaw
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean)
+      : [];
+
+    try {
+      await apiPost("/api/v1/configs/routes", {
+        doc_type: doc_type || null,
+        category: category || null,
+        priority: priority || null,
+        department: department || null,
+        emails,
+        webhook_url: webhook_url || null,
+      });
+      status.textContent = "Rota salva com sucesso.";
+      status.classList.add("ok");
+      await loadView();
+    } catch (err) {
+      status.textContent = `Erro ao salvar rota: ${err.message}`;
       status.classList.remove("ok");
     }
   });
