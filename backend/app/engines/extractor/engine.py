@@ -77,6 +77,28 @@ class ExtractionEngine:
         if cnpj_match:
             output["cnpj"] = re.sub(r"\D", "", cnpj_match.group(1))
 
+        # CNPJ do tomador (quando presente na seção TOMADOR DO SERVIÇO).
+        taker_section = re.search(
+            r"tomador\s+do\s+servi[cç]o(.{0,900})",
+            text_norm,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if taker_section:
+            taker_cnpj_match = re.search(r"(\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2})", taker_section.group(1))
+            if taker_cnpj_match:
+                output["taker_cnpj"] = re.sub(r"\D", "", taker_cnpj_match.group(1))
+
+        # Chave de acesso NFS-e (normalmente 44 dígitos).
+        access_key_match = re.search(
+            r"chave\s+de\s+acesso\s+da\s+nfs-?e[^\d]{0,120}(\d{44,60})",
+            text_norm,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if not access_key_match:
+            access_key_match = re.search(r"\b(\d{44,60})\b", text_norm)
+        if access_key_match:
+            output["access_key_nfse"] = access_key_match.group(1)
+
         # Valor total
         amount_patterns = [
             r"valor\s+total\s+da\s+nfs-?e[^\d]{0,40}(R?\$?\s*[\d\.\,]+)",
@@ -93,6 +115,26 @@ class ExtractionEngine:
             amount = parse_brl_amount(amount_match.group(1))
             if amount is not None:
                 output["total_amount"] = amount
+
+        services_match = re.search(
+            r"valor\s+dos\s+servi[cç]os[^\d]{0,40}(R?\$?\s*[\d\.\,]+)",
+            text_norm,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if services_match:
+            amount = parse_brl_amount(services_match.group(1))
+            if amount is not None:
+                output["services_amount"] = amount
+
+        iss_match = re.search(
+            r"(?:valor\s+do\s+iss|\biss\b(?:\s+retido)?)[^\d]{0,40}(R?\$?\s*[\d\.\,]+)",
+            text_norm,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if iss_match:
+            amount = parse_brl_amount(iss_match.group(1))
+            if amount is not None:
+                output["iss_amount"] = amount
 
         # Data simples dd/mm/yyyy
         date_match = re.search(r"data\s+e\s+hora\s+da\s+emiss[aã]o[^\d]{0,30}(\d{2}/\d{2}/\d{4})", text_norm, re.IGNORECASE)
