@@ -5,11 +5,14 @@ def infer_doc_type(filename: str) -> str:
     suffix = Path(filename).suffix.lower()
     name = Path(filename).name.lower()
 
-    certificate_keywords = ["cert", "certificado", "nr-10", "nr10", "treinamento", "curso"]
+    certificate_keywords = ["cert", "certificado"]
+    presentation_keywords = ["apresentacao", "apresentação", "treinamento", "aula", "material", "slides", "sep"]
     invoice_keywords = ["nfe", "nf-e", "nfse", "nota", "danfe", "fatura", "boleto", "invoice"]
 
     if any(k in name for k in certificate_keywords):
         return "training_certificate"
+    if any(k in name for k in presentation_keywords):
+        return "training_presentation"
     if any(k in name for k in invoice_keywords):
         return "invoice"
 

@@ -17,7 +17,7 @@ class RulesEngine:
         attachment_l = (attachment_name or "").lower()
 
         if any(k in f"{subject_l} {attachment_l}" for k in ["cert", "certificado", "nr-10", "nr10", "treinamento"]):
-            return RuleResult("treinamento", "rh_seguranca", 0.9, "normal", "keyword_training_certificate")
+            return RuleResult("treinamento", "rh_seguranca", 0.9, "normal", "keyword_training")
         if "nota fiscal" in subject_l or attachment_l.endswith(".xml"):
             return RuleResult("fiscal", "financeiro", 0.92, "high", "keyword_nota_fiscal")
         if sender_l.endswith("@banco.com"):

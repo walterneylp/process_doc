@@ -11,6 +11,17 @@ TRAINING_CERT_SCHEMA = {
     "required": ["trainee_name", "course_name"],
 }
 
+TRAINING_PRESENTATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "course_name": {"type": "string"},
+        "focus_area": {"type": "string"},
+        "norm_references": {"type": "array", "items": {"type": "string"}},
+        "target_audience": {"type": "string"},
+    },
+    "required": ["course_name"],
+}
+
 DEFAULT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -29,4 +40,5 @@ DEFAULT_SCHEMA = {
 
 BUILTIN_SCHEMA_BY_DOC_TYPE = {
     "training_certificate": TRAINING_CERT_SCHEMA,
+    "training_presentation": TRAINING_PRESENTATION_SCHEMA,
 }

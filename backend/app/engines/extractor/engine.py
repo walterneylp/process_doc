@@ -200,4 +200,50 @@ class ExtractionEngine:
             for field in ["document_number", "cnpj", "taker_cnpj", "access_key_nfse", "iss_amount", "services_amount", "total_amount"]:
                 output.pop(field, None)
 
+        if doc_type == "training_presentation":
+            course_patterns = [
+                r"produto:\s*treinamento\s*([^\n\r]+)",
+                r"treinament[oa]\s*(nr-?\d+(?:\s*/\s*sep)?[^\n\r]*)",
+            ]
+            for pattern in course_patterns:
+                match = re.search(pattern, text, re.IGNORECASE)
+                if match:
+                    output["course_name"] = re.sub(r"\s+", " ", match.group(1)).strip()
+                    break
+            if "course_name" not in output and re.search(r"\bnr-?10\b", text, re.IGNORECASE):
+                output["course_name"] = "NR-10 - Aplicada à Indústria"
+
+            if re.search(r"\bind[úu]str", text, re.IGNORECASE):
+                output["focus_area"] = "industrial"
+
+            norms = []
+            for norm in ["NR-10", "NR-10 SEP", "NR-12", "NBR-5410", "NBR 14039"]:
+                if re.search(re.escape(norm), text, re.IGNORECASE):
+                    norms.append(norm)
+            if norms:
+                output["norm_references"] = norms
+
+            audience_match = re.search(
+                r"foco\s+em\s+(.+?)(?:\n|$)",
+                text,
+                re.IGNORECASE,
+            )
+            if audience_match:
+                output["target_audience"] = re.sub(r"\s+", " ", audience_match.group(1)).strip()
+
+            for field in [
+                "document_number",
+                "cnpj",
+                "taker_cnpj",
+                "access_key_nfse",
+                "iss_amount",
+                "services_amount",
+                "total_amount",
+                "trainee_name",
+                "trainee_cpf",
+                "company_name",
+                "workload_hours",
+            ]:
+                output.pop(field, None)
+
         return output
