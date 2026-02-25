@@ -1,6 +1,7 @@
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Annotated
+import uuid
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
@@ -46,6 +47,39 @@ def list_review(db: DbDep, current_user: Annotated[models.User, Depends(get_curr
 def run_document(document_id: str):
     process_document.delay(document_id)
     return {"status": "QUEUED"}
+
+
+@router.get("/test-history")
+def test_analyze_history(
+    db: DbDep,
+    current_user: Annotated[models.User, Depends(get_current_user)],
+    limit: int = 20,
+):
+    items = (
+        db.query(models.ProcessingRun)
+        .filter(
+            models.ProcessingRun.tenant_id == current_user.tenant_id,
+            models.ProcessingRun.entity_type == "test_analyze",
+        )
+        .order_by(models.ProcessingRun.created_at.desc())
+        .limit(max(1, min(limit, 100)))
+        .all()
+    )
+    return [
+        {
+            "id": str(i.id),
+            "created_at": i.created_at.isoformat() if i.created_at else None,
+            "status": i.status,
+            "trace_id": i.trace_id,
+            "filename": (i.detail or {}).get("filename"),
+            "doc_type": (i.detail or {}).get("doc_type"),
+            "valid": (i.detail or {}).get("valid"),
+            "errors": (i.detail or {}).get("errors", []),
+            "category": ((i.detail or {}).get("classification") or {}).get("category"),
+            "confidence": ((i.detail or {}).get("classification") or {}).get("confidence"),
+        }
+        for i in items
+    ]
 
 
 @router.post("/test-analyze")
@@ -120,7 +154,7 @@ async def test_analyze_document(
             errors.append("low_confidence")
             valid = False
 
-        return {
+        response_payload = {
             "filename": file.filename,
             "doc_type": doc_type,
             "text_preview": extracted_text[:1200],
@@ -130,6 +164,17 @@ async def test_analyze_document(
             "errors": errors,
             "needs_review": not valid,
         }
+        run = models.ProcessingRun(
+            tenant_id=current_user.tenant_id,
+            entity_type="test_analyze",
+            entity_id=uuid.uuid4().hex,
+            status="DONE" if valid else "REVIEW",
+            trace_id=uuid.uuid4().hex,
+            detail=response_payload,
+        )
+        db.add(run)
+        db.commit()
+        return response_payload
     finally:
         try:
             Path(tmp_path).unlink(missing_ok=True)

@@ -1,8 +1,8 @@
 const state = {
   token: localStorage.getItem("epe_token") || "",
   currentView: "summary",
-  version: "v0.5.0",
-  build: "2026.02.25-local-04",
+  version: "v0.5.1",
+  build: "2026.02.25-local-05",
 };
 
 const endpoints = {
@@ -150,6 +150,8 @@ function renderTestAi() {
       <button id="runTestAiBtn" class="primary-btn">Analisar Arquivo</button>
       <p id="testAiStatus" class="status"></p>
       <div id="testAiResult"></div>
+      <h3 style="margin-top:20px;">Histórico de Testes</h3>
+      <div id="testAiHistory"></div>
     </div>
   `;
 }
@@ -173,6 +175,21 @@ function renderTestAiResult(data) {
       </table>
     </div>
   `;
+}
+
+function renderTestAiHistory(items) {
+  return renderTable(
+    [
+      { key: "created_at", label: "Data/Hora" },
+      { key: "filename", label: "Arquivo" },
+      { key: "doc_type", label: "Tipo" },
+      { key: "category", label: "Categoria" },
+      { key: "confidence", label: "Confiança" },
+      { key: "status", label: "Status" },
+      { key: "valid", label: "Válido" },
+    ],
+    items || [],
+  );
 }
 
 function renderView(view, data) {
@@ -429,6 +446,8 @@ function bindTestAiActions() {
   const button = document.getElementById("runTestAiBtn");
   if (!button) return;
 
+  loadTestAiHistory();
+
   button.addEventListener("click", async () => {
     const status = document.getElementById("testAiStatus");
     const result = document.getElementById("testAiResult");
@@ -458,11 +477,29 @@ function bindTestAiActions() {
       const data = await apiPostForm("/api/v1/documents/test-analyze", form);
       status.textContent = "Análise concluída.";
       result.innerHTML = renderTestAiResult(data);
+      await loadTestAiHistory();
     } catch (err) {
       status.textContent = `Erro na análise: ${err.message}`;
       status.classList.remove("ok");
     }
   });
+}
+
+async function loadTestAiHistory() {
+  const target = document.getElementById("testAiHistory");
+  if (!target) return;
+  try {
+    const items = await apiGet("/api/v1/documents/test-history?limit=20");
+    target.innerHTML = renderTestAiHistory(
+      (items || []).map((i) => ({
+        ...i,
+        created_at: i.created_at ? new Date(i.created_at).toLocaleString("pt-BR") : "-",
+        confidence: i.confidence ?? "-",
+      })),
+    );
+  } catch (err) {
+    target.innerHTML = `<div class="empty">Erro ao carregar histórico: ${err.message}</div>`;
+  }
 }
 
 function bindMenu() {
