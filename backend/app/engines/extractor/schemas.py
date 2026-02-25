@@ -1,3 +1,16 @@
+TRAINING_CERT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "trainee_name": {"type": "string"},
+        "trainee_cpf": {"type": "string"},
+        "company_name": {"type": "string"},
+        "course_name": {"type": "string"},
+        "workload_hours": {"type": "number"},
+        "issue_date": {"type": "string"},
+    },
+    "required": ["trainee_name", "course_name"],
+}
+
 DEFAULT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -11,4 +24,9 @@ DEFAULT_SCHEMA = {
         "services_amount": {"type": "number"},
     },
     "required": ["document_number"],
+}
+
+
+BUILTIN_SCHEMA_BY_DOC_TYPE = {
+    "training_certificate": TRAINING_CERT_SCHEMA,
 }

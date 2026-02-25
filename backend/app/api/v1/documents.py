@@ -65,6 +65,7 @@ async def test_analyze_document(
     try:
         extracted_text = extract_text_from_file(tmp_path, file.content_type)
         analysis_parts = [
+            f"Nome do arquivo: {file.filename or ''}",
             f"Assunto: {subject}",
             f"Remetente: {sender}",
             f"Corpo: {body_text}",
@@ -109,7 +110,9 @@ async def test_analyze_document(
             extraction = {}
             extraction_errors.append(f"extraction_error:{exc}")
 
-        valid, errors = validator.validate(extraction)
+        schema = extraction_engine.schema_for(db, current_user.tenant_id, doc_type)
+        required_fields = schema.get("required", []) if isinstance(schema, dict) else []
+        valid, errors = validator.validate(extraction, required_fields=required_fields)
         errors.extend(extraction_errors)
         if extraction_errors:
             valid = False

@@ -14,7 +14,15 @@ class OpenAIProvider(LLMProvider):
 
     def _fallback(self, prompt: str) -> dict:
         text = (prompt or "").lower()
-        if any(k in text for k in ["nota fiscal", "nf-e", "nfe", "cnpj"]):
+        if any(k in text for k in ["certificado", "treinamento", "nr-10", "nr10", "carga horária"]):
+            return {
+                "category": "treinamento",
+                "department": "rh_seguranca",
+                "confidence": 0.86,
+                "priority": "normal",
+                "reason": "fallback_keyword_training_certificate",
+            }
+        if any(k in text for k in ["nota fiscal", "nf-e", "nfe", "nfse", "danfe", "fatura", "boleto"]):
             return {
                 "category": "fiscal",
                 "department": "financeiro",

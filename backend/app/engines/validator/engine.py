@@ -5,7 +5,7 @@ from datetime import datetime
 class ValidatorEngine:
     cnpj_pattern = re.compile(r"^\d{14}$")
 
-    def validate(self, data: dict) -> tuple[bool, list[str]]:
+    def validate(self, data: dict, required_fields: list[str] | None = None) -> tuple[bool, list[str]]:
         errors: list[str] = []
 
         if "issue_date" in data:
@@ -38,8 +38,13 @@ class ValidatorEngine:
             access = re.sub(r"\D", "", str(data["access_key_nfse"]))
             if len(access) < 44 or len(access) > 60:
                 errors.append("invalid_access_key_nfse")
+        if "trainee_cpf" in data and data["trainee_cpf"] is not None:
+            cpf = re.sub(r"\D", "", str(data["trainee_cpf"]))
+            if len(cpf) != 11:
+                errors.append("invalid_trainee_cpf")
 
-        for field in ["document_number"]:
+        fields = required_fields if required_fields is not None else ["document_number"]
+        for field in fields:
             if field not in data:
                 errors.append(f"missing_{field}")
 

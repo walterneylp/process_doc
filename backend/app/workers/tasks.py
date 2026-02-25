@@ -177,6 +177,7 @@ def process_document(document_id: str) -> None:
                 attachment_text = extract_text_from_file(attachment.file_path, attachment.mime_type)
 
         context_chunks = [
+            f"Nome do anexo: {attachment_name or ''}",
             f"Assunto: {email.subject or ''}",
             f"Remetente: {email.sender or ''}",
             f"Corpo: {email.body_text or ''}",
@@ -228,7 +229,9 @@ def process_document(document_id: str) -> None:
         extraction = Extraction(tenant_id=doc.tenant_id, document_id=doc.id, data=extracted)
         db.add(extraction)
 
-        valid, errors = validator.validate(extracted)
+        schema = extraction_engine.schema_for(db, doc.tenant_id, doc.doc_type or "generic_document")
+        required_fields = schema.get("required", []) if isinstance(schema, dict) else []
+        valid, errors = validator.validate(extracted, required_fields=required_fields)
         confidence = float(result.get("confidence", 0))
         if confidence < 0.75 and "low_confidence" not in errors:
             errors.append("low_confidence")

@@ -4,13 +4,16 @@ from sqlalchemy.orm import Session
 
 from backend.app.adapters.llm.openai_provider import OpenAIProvider
 from backend.app.db import models
-from backend.app.engines.extractor.schemas import DEFAULT_SCHEMA
+from backend.app.engines.extractor.schemas import BUILTIN_SCHEMA_BY_DOC_TYPE, DEFAULT_SCHEMA
 from backend.app.utils.jsonschema import validate_json_schema
 
 
 class ExtractionEngine:
     def __init__(self):
         self.provider = OpenAIProvider()
+
+    def schema_for(self, db: Session, tenant_id, doc_type: str) -> dict:
+        return self._schema_for(db, tenant_id, doc_type)
 
     def _schema_for(self, db: Session, tenant_id, doc_type: str) -> dict:
         item = (
@@ -22,7 +25,9 @@ class ExtractionEngine:
             )
             .first()
         )
-        return item.schema if item else DEFAULT_SCHEMA
+        if item:
+            return item.schema
+        return BUILTIN_SCHEMA_BY_DOC_TYPE.get(doc_type, DEFAULT_SCHEMA)
 
     def extract(self, db: Session, tenant_id, doc_type: str, content: str) -> dict:
         schema = self._schema_for(db, tenant_id, doc_type)
@@ -33,13 +38,13 @@ class ExtractionEngine:
             ok, err = validate_json_schema(payload, schema)
             if ok:
                 return payload
-        local_payload = self._local_extract(content)
+        local_payload = self._local_extract(content, doc_type)
         ok, err = validate_json_schema(local_payload, schema)
         if ok:
             return local_payload
         raise ValueError(f"invalid_extraction_schema: {err}")
 
-    def _local_extract(self, content: str) -> dict:
+    def _local_extract(self, content: str, doc_type: str | None = None) -> dict:
         text = content or ""
         output: dict = {}
         text_norm = re.sub(r"[ \t]+", " ", text)
@@ -143,5 +148,56 @@ class ExtractionEngine:
         if date_match:
             d, m, y = date_match.group(1).split("/")
             output["issue_date"] = f"{y}-{m}-{d}"
+
+        if doc_type == "training_certificate":
+            # Nome do participante entre "Certificamos que" e "participou".
+            trainee_match = re.search(
+                r"certificamos\s+que\s+([A-ZÀ-Ú\s]+?)\s+participou",
+                text,
+                re.IGNORECASE | re.DOTALL,
+            )
+            if trainee_match:
+                output["trainee_name"] = re.sub(r"\s+", " ", trainee_match.group(1)).strip()
+            if "trainee_name" not in output:
+                filename_name_match = re.search(
+                    r"(?:cert(?:ificado)?[-_\s]*nr-?10)[\s\-_:]+([A-ZÀ-Ú\s]+?)[\s\-_:]+\d{3}\.?\d{3}\.?\d{3}-?\d{2}",
+                    text,
+                    re.IGNORECASE,
+                )
+                if filename_name_match:
+                    output["trainee_name"] = re.sub(r"\s+", " ", filename_name_match.group(1)).strip().upper()
+
+            cpf_match = re.search(r"\b(\d{3}\.?\d{3}\.?\d{3}-?\d{2})\b", text)
+            if cpf_match:
+                output["trainee_cpf"] = re.sub(r"\D", "", cpf_match.group(1))
+
+            course_match = re.search(
+                r"participou\s+do\s+treinamento\s+(.+?)\s+em\s+conformidade",
+                text,
+                re.IGNORECASE | re.DOTALL,
+            )
+            if course_match:
+                output["course_name"] = re.sub(r"\s+", " ", course_match.group(1)).strip()
+            if "course_name" not in output and re.search(r"\bnr-?10\b", text, re.IGNORECASE):
+                output["course_name"] = "NR-10 - Básico"
+
+            hours_match = re.search(r"carga\s+hor[áa]ria\s+de\s+(\d+)\s+horas", text_norm, re.IGNORECASE)
+            if hours_match:
+                output["workload_hours"] = float(hours_match.group(1))
+
+            # Empresa: linha textual imediatamente antes do CNPJ empresarial.
+            company_match = re.search(
+                r"\n([A-Z0-9À-Ú][A-Z0-9À-Ú\s\.-]{5,})\n\s*\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}",
+                text,
+                re.IGNORECASE,
+            )
+            if company_match:
+                value = re.sub(r"\s+", " ", company_match.group(1)).strip()
+                if not re.search(r"\d{3}\.?\d{3}\.?\d{3}-?\d{2}", value):
+                    output["company_name"] = value
+
+            # Para certificado, não obrigar campos de NF.
+            for field in ["document_number", "cnpj", "taker_cnpj", "access_key_nfse", "iss_amount", "services_amount", "total_amount"]:
+                output.pop(field, None)
 
         return output
