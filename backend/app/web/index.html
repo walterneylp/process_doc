@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EPE Dashboard</title>
+    <link rel="stylesheet" href="/dashboard/styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div>
+          <h1>EPE</h1>
+          <p class="subtitle">Enterprise Processing Engine</p>
+        </div>
+
+        <nav class="menu">
+          <button data-view="summary" class="menu-item active">Resumo</button>
+          <button data-view="usage" class="menu-item">Uso</button>
+          <button data-view="emails" class="menu-item">Emails</button>
+          <button data-view="documents" class="menu-item">Documentos</button>
+          <button data-view="review" class="menu-item">Revisão</button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div id="versionLine">version: -</div>
+          <div id="buildLine">build: -</div>
+        </div>
+      </aside>
+
+      <main class="content">
+        <section class="card login-card" id="loginCard">
+          <h2>Acesso</h2>
+          <div class="field">
+            <label>Email</label>
+            <input id="emailInput" type="email" placeholder="seu@email.com" />
+          </div>
+          <div class="field">
+            <label>Senha</label>
+            <input id="passwordInput" type="password" placeholder="********" />
+          </div>
+          <button id="loginBtn" class="primary-btn">Entrar</button>
+          <p id="loginStatus" class="status"></p>
+        </section>
+
+        <section class="card" id="panelCard" hidden>
+          <div class="panel-header">
+            <h2 id="panelTitle">Resumo</h2>
+            <button id="refreshBtn" class="secondary-btn">Atualizar</button>
+          </div>
+          <pre id="panelBody"></pre>
+        </section>
+      </main>
+    </div>
+
+    <script src="/dashboard/app.js"></script>
+  </body>
+</html>
