@@ -88,6 +88,16 @@ textarea {
   padding: 10px;
   background: #fff;
 }
+select {
+  width: 100%;
+  border: 1px solid #cad5e5;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+input[type="checkbox"] {
+  width: auto;
+}
 textarea {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }

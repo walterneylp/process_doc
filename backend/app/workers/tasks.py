@@ -5,7 +5,9 @@ from sqlalchemy.orm import Session
 
 from backend.app.adapters.email.imap_client import ImapClientAdapter
 from backend.app.adapters.notify.email_notify import EmailNotifyAdapter
+from backend.app.adapters.notify.telegram_notify import TelegramNotifyAdapter
 from backend.app.adapters.notify.webhook_notify import WebhookNotifyAdapter
+from backend.app.adapters.notify.whatsapp_notify import WhatsAppNotifyAdapter
 from backend.app.core.limits import can_call_llm, can_process_email
 from backend.app.db.models import (
     Classification,
@@ -17,12 +19,18 @@ from backend.app.db.models import (
     Extraction,
     Plan,
     Tenant,
+    TenantRule,
 )
 from backend.app.db.session import SessionLocal
 from backend.app.domain.audit.service import log_event
 from backend.app.domain.billing.service import get_or_create_usage
 from backend.app.domain.document.service import create_document_from_attachment
-from backend.app.domain.email.service import create_email_attachment, create_email_if_missing
+from backend.app.domain.email.service import (
+    account_sync_due,
+    create_email_attachment,
+    create_email_if_missing,
+    get_account_sync_interval,
+)
 from backend.app.domain.routing.service import route_for_classification
 from backend.app.adapters.storage.local import LocalStorageAdapter
 from backend.app.engines.extractor.engine import ExtractionEngine
@@ -40,12 +48,29 @@ def _tenant_plan(db: Session, tenant_id):
     return db.query(Plan).filter(Plan.name == "Starter").first()
 
 
+def _notification_channels(db: Session, tenant_id) -> dict:
+    rule = (
+        db.query(TenantRule)
+        .filter(TenantRule.tenant_id == tenant_id, TenantRule.rule_name == "notify:channels")
+        .first()
+    )
+    definition = rule.definition if rule and rule.definition else {}
+    return {
+        "emails": definition.get("emails", []),
+        "whatsapp_numbers": definition.get("whatsapp_numbers", []),
+        "telegram_users": definition.get("telegram_users", []),
+    }
+
+
 @celery_app.task(name="backend.app.workers.tasks.sync_all_accounts")
 def sync_all_accounts() -> None:
     db = SessionLocal()
     try:
         accounts = db.query(EmailAccount).filter(EmailAccount.is_active == True).all()
         for account in accounts:
+            interval = get_account_sync_interval(db, account.tenant_id, account.id, 5)
+            if not account_sync_due(account, interval):
+                continue
             sync_email_account.delay(str(account.id))
     finally:
         db.close()
@@ -100,6 +125,8 @@ def sync_email_account(account_id: str) -> None:
                     entity_id=str(email.id),
                     payload={"message_id": email.message_id},
                 )
+        account.last_synced_at = datetime.utcnow()
+        db.commit()
     finally:
         db.close()
 
@@ -262,11 +289,16 @@ def process_document(document_id: str) -> None:
             classification.priority,
         )
         notify_emails = routing.get("emails", []) if routing else []
+        channels = _notification_channels(db, doc.tenant_id)
+        all_notify_emails = sorted(set((notify_emails or []) + (channels.get("emails") or [])))
         EmailNotifyAdapter().send(
-            recipients=notify_emails,
+            recipients=all_notify_emails,
             subject=f"Novo documento {classification.category}",
             body=f"Documento {doc.id} prioridade {classification.priority}",
         )
+        message = f"Novo documento {classification.category} ({doc.doc_type}) prioridade {classification.priority}"
+        WhatsAppNotifyAdapter().send(channels.get("whatsapp_numbers", []), message)
+        TelegramNotifyAdapter().send(channels.get("telegram_users", []), message)
         if routing and routing.get("webhook_url"):
             WebhookNotifyAdapter().send(
                 routing.get("webhook_url"),

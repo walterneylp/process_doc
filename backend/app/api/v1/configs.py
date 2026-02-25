@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from backend.app.api.v1.deps import DbDep, get_current_user
@@ -32,6 +32,19 @@ class RoutePayload(BaseModel):
     emails: list[str] = []
     webhook_url: str | None = None
     rule_name: str | None = None
+
+
+class NotificationChannelsPayload(BaseModel):
+    emails: list[str] = []
+    whatsapp_numbers: list[str] = []
+    telegram_users: list[str] = []
+
+
+class DocumentProfilePayload(BaseModel):
+    doc_type: str
+    category: str
+    priority: str
+    department: str
 
 
 @router.get("/rules")
@@ -179,6 +192,105 @@ def add_route(payload: RoutePayload, db: DbDep, current_user: Annotated[models.U
         tenant_id=current_user.tenant_id,
         rule_name=payload.rule_name or default_name,
         definition=definition,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return {"id": item.id}
+
+
+@router.get("/notifications")
+def get_notifications(
+    db: DbDep,
+    current_user: Annotated[models.User, Depends(get_current_user)],
+):
+    rule = (
+        db.query(models.TenantRule)
+        .filter(models.TenantRule.tenant_id == current_user.tenant_id, models.TenantRule.rule_name == "notify:channels")
+        .first()
+    )
+    definition = rule.definition if rule and rule.definition else {}
+    return {
+        "emails": definition.get("emails", []),
+        "whatsapp_numbers": definition.get("whatsapp_numbers", []),
+        "telegram_users": definition.get("telegram_users", []),
+    }
+
+
+@router.post("/notifications")
+def set_notifications(
+    payload: NotificationChannelsPayload,
+    db: DbDep,
+    current_user: Annotated[models.User, Depends(get_current_user)],
+):
+    rule = (
+        db.query(models.TenantRule)
+        .filter(models.TenantRule.tenant_id == current_user.tenant_id, models.TenantRule.rule_name == "notify:channels")
+        .first()
+    )
+    definition = {
+        "emails": payload.emails,
+        "whatsapp_numbers": payload.whatsapp_numbers,
+        "telegram_users": payload.telegram_users,
+    }
+    if rule:
+        rule.definition = definition
+    else:
+        rule = models.TenantRule(
+            tenant_id=current_user.tenant_id,
+            rule_name="notify:channels",
+            definition=definition,
+            is_active=True,
+        )
+        db.add(rule)
+    db.commit()
+    return {"status": "UPDATED"}
+
+
+@router.get("/document-profiles")
+def list_document_profiles(
+    db: DbDep,
+    current_user: Annotated[models.User, Depends(get_current_user)],
+    limit: int = Query(default=100, ge=1, le=300),
+):
+    items = (
+        db.query(models.TenantRule)
+        .filter(models.TenantRule.tenant_id == current_user.tenant_id, models.TenantRule.rule_name.like("profile:%"))
+        .order_by(models.TenantRule.created_at.desc(), models.TenantRule.id.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id": i.id,
+            "rule_name": i.rule_name,
+            "definition": i.definition,
+            "is_active": i.is_active,
+            "created_at": i.created_at,
+        }
+        for i in items
+    ]
+
+
+@router.post("/document-profiles")
+def add_document_profile(
+    payload: DocumentProfilePayload,
+    db: DbDep,
+    current_user: Annotated[models.User, Depends(get_current_user)],
+):
+    if payload.priority not in {"low", "medium", "high"}:
+        raise HTTPException(status_code=400, detail="invalid_priority")
+    name = f"profile:{payload.doc_type}:{payload.category}:{payload.priority}:{payload.department}"
+    item = models.TenantRule(
+        tenant_id=current_user.tenant_id,
+        rule_name=name,
+        definition={
+            "doc_type": payload.doc_type,
+            "category": payload.category,
+            "priority": payload.priority,
+            "department": payload.department,
+        },
+        is_active=True,
     )
     db.add(item)
     db.commit()

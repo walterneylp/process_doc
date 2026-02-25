@@ -1,8 +1,8 @@
 const state = {
   token: localStorage.getItem("epe_token") || "",
   currentView: "summary",
-  version: "v0.6.0",
-  build: "2026.02.25-local-06",
+  version: "v0.7.0",
+  build: "2026.02.25-local-07",
 };
 
 const endpoints = {
@@ -140,6 +140,45 @@ function renderConfigs(data) {
   return `
     <div class="configs-grid">
       <section class="card-lite">
+        <h3>Conta de Email (IMAP)</h3>
+        <div class="field"><label>Nome da conta</label><input id="accName" type="text" placeholder="ex: Financeiro" /></div>
+        <div class="field"><label>Servidor IMAP</label><input id="accHost" type="text" placeholder="mail.seudominio.com" /></div>
+        <div class="field"><label>Porta IMAP</label><input id="accPort" type="number" value="993" /></div>
+        <div class="field"><label>Usuário</label><input id="accUser" type="text" placeholder="contato@dominio.com" /></div>
+        <div class="field"><label>Senha</label><input id="accPass" type="password" placeholder="********" /></div>
+        <div class="field"><label>SSL</label><input id="accSsl" type="checkbox" checked /></div>
+        <div class="field">
+          <label>Tempo de sincronização</label>
+          <select id="accInterval">
+            <option value="5">5 minutos</option>
+            <option value="15">15 minutos</option>
+            <option value="30">30 minutos</option>
+            <option value="60">1 hora</option>
+            <option value="240">4 horas</option>
+            <option value="720">12 horas</option>
+          </select>
+        </div>
+        <button id="saveAccountBtn" class="primary-btn">Salvar conta IMAP</button>
+        <p id="accountStatus" class="status ok"></p>
+        ${renderTable(
+          [
+            { key: "id", label: "ID" },
+            { key: "name", label: "Conta" },
+            { key: "imap_host", label: "Servidor" },
+            { key: "imap_username", label: "Usuário" },
+            { key: "sync_interval_minutes", label: "Intervalo(min)" },
+            { key: "is_active", label: "Ativa" },
+          ],
+          data.accounts,
+        )}
+        <div class="field"><label>ID da conta para ação</label><input id="accountActionId" type="text" placeholder="cole o ID da conta" /></div>
+        <div class="toolbar-actions">
+          <button id="testAccountBtn" class="secondary-btn">Testar conexão</button>
+          <button id="syncAccountBtn" class="secondary-btn">Sincronizar agora</button>
+        </div>
+      </section>
+
+      <section class="card-lite">
         <h3>Regras</h3>
         <div class="field"><label>Nome da regra</label><input id="ruleName" type="text" placeholder="ex: nota_fiscal_regra" /></div>
         <div class="field"><label>Definição (JSON)</label><textarea id="ruleDefinition" rows="5" placeholder='{"contains": ["nota fiscal"]}'></textarea></div>
@@ -194,7 +233,15 @@ function renderConfigs(data) {
         <h3>Rotas (Tipo/Categoria -> Email/Webhook)</h3>
         <div class="field"><label>Tipo documento (opcional)</label><input id="routeDocType" type="text" placeholder="ex: invoice" /></div>
         <div class="field"><label>Categoria (opcional)</label><input id="routeCategory" type="text" placeholder="ex: fiscal" /></div>
-        <div class="field"><label>Prioridade (opcional)</label><input id="routePriority" type="text" placeholder="normal | high" /></div>
+        <div class="field">
+          <label>Prioridade (opcional)</label>
+          <select id="routePriority">
+            <option value="">(qualquer)</option>
+            <option value="low">Baixa</option>
+            <option value="medium">Média</option>
+            <option value="high">Alta</option>
+          </select>
+        </div>
         <div class="field"><label>Departamento (opcional)</label><input id="routeDepartment" type="text" placeholder="financeiro" /></div>
         <div class="field"><label>Emails (separados por vírgula)</label><input id="routeEmails" type="text" placeholder="a@empresa.com,b@empresa.com" /></div>
         <div class="field"><label>Webhook URL (opcional)</label><input id="routeWebhook" type="text" placeholder="https://seu-endpoint/webhook" /></div>
@@ -209,6 +256,40 @@ function renderConfigs(data) {
           ],
           data.routes,
         )}
+      </section>
+
+      <section class="card-lite">
+        <h3>Parâmetros de Documento</h3>
+        <div class="field"><label>Tipo de documento</label><input id="profileDocType" type="text" placeholder="ex: training_certificate" /></div>
+        <div class="field"><label>Categoria</label><input id="profileCategory" type="text" placeholder="ex: treinamento" /></div>
+        <div class="field"><label>Departamento</label><input id="profileDepartment" type="text" placeholder="ex: rh_seguranca" /></div>
+        <div class="field">
+          <label>Prioridade</label>
+          <select id="profilePriority">
+            <option value="low">Baixa</option>
+            <option value="medium" selected>Média</option>
+            <option value="high">Alta</option>
+          </select>
+        </div>
+        <button id="saveProfileBtn" class="primary-btn">Salvar parâmetro</button>
+        <p id="profileStatus" class="status ok"></p>
+        ${renderTable(
+          [
+            { key: "id", label: "ID" },
+            { key: "rule_name", label: "Nome" },
+            { key: "definition", label: "Definição" },
+          ],
+          data.documentProfiles,
+        )}
+      </section>
+
+      <section class="card-lite">
+        <h3>Avisos a Usuários</h3>
+        <div class="field"><label>Emails (vírgula)</label><input id="notifEmails" type="text" placeholder="a@empresa.com,b@empresa.com" value="${(data.notifications?.emails || []).join(",")}" /></div>
+        <div class="field"><label>WhatsApp (vírgula)</label><input id="notifWhatsapp" type="text" placeholder="+5511999999999,+5511888888888" value="${(data.notifications?.whatsapp_numbers || []).join(",")}" /></div>
+        <div class="field"><label>Telegram (vírgula)</label><input id="notifTelegram" type="text" placeholder="@usuario1,@usuario2" value="${(data.notifications?.telegram_users || []).join(",")}" /></div>
+        <button id="saveNotificationsBtn" class="primary-btn">Salvar avisos</button>
+        <p id="notificationsStatus" class="status ok"></p>
       </section>
     </div>
   `;
@@ -357,13 +438,16 @@ async function loadView() {
   try {
     let data;
     if (state.currentView === "configs") {
-      const [rules, prompts, schemas, routes] = await Promise.all([
+      const [rules, prompts, schemas, routes, accounts, notifications, documentProfiles] = await Promise.all([
         apiGet("/api/v1/configs/rules?limit=20"),
         apiGet("/api/v1/configs/prompts?limit=20"),
         apiGet("/api/v1/configs/schemas?limit=20"),
         apiGet("/api/v1/configs/routes?limit=20"),
+        apiGet("/api/v1/email-accounts"),
+        apiGet("/api/v1/configs/notifications"),
+        apiGet("/api/v1/configs/document-profiles?limit=50"),
       ]);
-      data = { rules, prompts, schemas, routes };
+      data = { rules, prompts, schemas, routes, accounts, notifications, documentProfiles };
     } else if (state.currentView === "test-ai") {
       data = {};
     } else {
@@ -540,8 +624,77 @@ function bindConfigActions() {
   const promptBtn = document.getElementById("savePromptBtn");
   const schemaBtn = document.getElementById("saveSchemaBtn");
   const routeBtn = document.getElementById("saveRouteBtn");
+  const accountBtn = document.getElementById("saveAccountBtn");
+  const testAccountBtn = document.getElementById("testAccountBtn");
+  const syncAccountBtn = document.getElementById("syncAccountBtn");
+  const profileBtn = document.getElementById("saveProfileBtn");
+  const notificationsBtn = document.getElementById("saveNotificationsBtn");
 
-  if (!ruleBtn || !promptBtn || !schemaBtn || !routeBtn) return;
+  if (!ruleBtn || !promptBtn || !schemaBtn || !routeBtn || !accountBtn || !testAccountBtn || !syncAccountBtn || !profileBtn || !notificationsBtn) return;
+
+  accountBtn.addEventListener("click", async () => {
+    const status = document.getElementById("accountStatus");
+    status.textContent = "";
+    status.classList.add("ok");
+    const payload = {
+      name: document.getElementById("accName").value.trim(),
+      imap_host: document.getElementById("accHost").value.trim(),
+      imap_port: Number(document.getElementById("accPort").value),
+      imap_username: document.getElementById("accUser").value.trim(),
+      imap_password: document.getElementById("accPass").value,
+      use_ssl: document.getElementById("accSsl").checked,
+      sync_interval_minutes: Number(document.getElementById("accInterval").value),
+    };
+    if (!payload.name || !payload.imap_host || !payload.imap_username || !payload.imap_password) {
+      status.textContent = "Preencha todos os campos da conta IMAP.";
+      status.classList.remove("ok");
+      return;
+    }
+    try {
+      await apiPost("/api/v1/email-accounts", payload);
+      status.textContent = "Conta salva com sucesso.";
+      await loadView();
+    } catch (err) {
+      status.textContent = `Erro ao salvar conta: ${err.message}`;
+      status.classList.remove("ok");
+    }
+  });
+
+  testAccountBtn.addEventListener("click", async () => {
+    const status = document.getElementById("accountStatus");
+    const accountId = document.getElementById("accountActionId").value.trim();
+    if (!accountId) {
+      status.textContent = "Informe o ID da conta.";
+      status.classList.remove("ok");
+      return;
+    }
+    try {
+      const res = await apiPost(`/api/v1/email-accounts/${accountId}/test`, {});
+      status.textContent = res.ok ? "Conexão IMAP OK." : "Falha na conexão IMAP.";
+      status.classList.toggle("ok", !!res.ok);
+    } catch (err) {
+      status.textContent = `Erro no teste: ${err.message}`;
+      status.classList.remove("ok");
+    }
+  });
+
+  syncAccountBtn.addEventListener("click", async () => {
+    const status = document.getElementById("accountStatus");
+    const accountId = document.getElementById("accountActionId").value.trim();
+    if (!accountId) {
+      status.textContent = "Informe o ID da conta.";
+      status.classList.remove("ok");
+      return;
+    }
+    try {
+      await apiPost(`/api/v1/email-accounts/${accountId}/sync`, {});
+      status.textContent = "Sincronização enfileirada.";
+      status.classList.add("ok");
+    } catch (err) {
+      status.textContent = `Erro ao sincronizar: ${err.message}`;
+      status.classList.remove("ok");
+    }
+  });
 
   ruleBtn.addEventListener("click", async () => {
     const status = document.getElementById("ruleStatus");
@@ -653,6 +806,48 @@ function bindConfigActions() {
       await loadView();
     } catch (err) {
       status.textContent = `Erro ao salvar rota: ${err.message}`;
+      status.classList.remove("ok");
+    }
+  });
+
+  profileBtn.addEventListener("click", async () => {
+    const status = document.getElementById("profileStatus");
+    const payload = {
+      doc_type: document.getElementById("profileDocType").value.trim(),
+      category: document.getElementById("profileCategory").value.trim(),
+      department: document.getElementById("profileDepartment").value.trim(),
+      priority: document.getElementById("profilePriority").value,
+    };
+    if (!payload.doc_type || !payload.category || !payload.department) {
+      status.textContent = "Preencha tipo, categoria e departamento.";
+      status.classList.remove("ok");
+      return;
+    }
+    try {
+      await apiPost("/api/v1/configs/document-profiles", payload);
+      status.textContent = "Parâmetro salvo com sucesso.";
+      status.classList.add("ok");
+      await loadView();
+    } catch (err) {
+      status.textContent = `Erro ao salvar parâmetro: ${err.message}`;
+      status.classList.remove("ok");
+    }
+  });
+
+  notificationsBtn.addEventListener("click", async () => {
+    const status = document.getElementById("notificationsStatus");
+    const parseList = (v) => (v || "").split(",").map((x) => x.trim()).filter(Boolean);
+    const payload = {
+      emails: parseList(document.getElementById("notifEmails").value),
+      whatsapp_numbers: parseList(document.getElementById("notifWhatsapp").value),
+      telegram_users: parseList(document.getElementById("notifTelegram").value),
+    };
+    try {
+      await apiPost("/api/v1/configs/notifications", payload);
+      status.textContent = "Avisos salvos com sucesso.";
+      status.classList.add("ok");
+    } catch (err) {
+      status.textContent = `Erro ao salvar avisos: ${err.message}`;
       status.classList.remove("ok");
     }
   });
