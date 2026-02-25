@@ -1,8 +1,8 @@
 const state = {
   token: localStorage.getItem("epe_token") || "",
   currentView: "summary",
-  version: "v0.7.0",
-  build: "2026.02.25-local-07",
+  version: "v0.7.1",
+  build: "2026.02.25-local-08",
 };
 
 const endpoints = {
@@ -286,8 +286,11 @@ function renderConfigs(data) {
       <section class="card-lite">
         <h3>Avisos a Usuários</h3>
         <div class="field"><label>Emails (vírgula)</label><input id="notifEmails" type="text" placeholder="a@empresa.com,b@empresa.com" value="${(data.notifications?.emails || []).join(",")}" /></div>
+        <div class="field"><label>Webhook Email</label><input id="notifEmailWebhook" type="text" placeholder="https://seu-endpoint/email" value="${data.notifications?.email_webhook_url || ""}" /></div>
         <div class="field"><label>WhatsApp (vírgula)</label><input id="notifWhatsapp" type="text" placeholder="+5511999999999,+5511888888888" value="${(data.notifications?.whatsapp_numbers || []).join(",")}" /></div>
+        <div class="field"><label>Webhook WhatsApp</label><input id="notifWhatsappWebhook" type="text" placeholder="https://seu-endpoint/whatsapp" value="${data.notifications?.whatsapp_webhook_url || ""}" /></div>
         <div class="field"><label>Telegram (vírgula)</label><input id="notifTelegram" type="text" placeholder="@usuario1,@usuario2" value="${(data.notifications?.telegram_users || []).join(",")}" /></div>
+        <div class="field"><label>Webhook Telegram</label><input id="notifTelegramWebhook" type="text" placeholder="https://seu-endpoint/telegram" value="${data.notifications?.telegram_webhook_url || ""}" /></div>
         <button id="saveNotificationsBtn" class="primary-btn">Salvar avisos</button>
         <p id="notificationsStatus" class="status ok"></p>
       </section>
@@ -841,6 +844,9 @@ function bindConfigActions() {
       emails: parseList(document.getElementById("notifEmails").value),
       whatsapp_numbers: parseList(document.getElementById("notifWhatsapp").value),
       telegram_users: parseList(document.getElementById("notifTelegram").value),
+      email_webhook_url: document.getElementById("notifEmailWebhook").value.trim() || null,
+      whatsapp_webhook_url: document.getElementById("notifWhatsappWebhook").value.trim() || null,
+      telegram_webhook_url: document.getElementById("notifTelegramWebhook").value.trim() || null,
     };
     try {
       await apiPost("/api/v1/configs/notifications", payload);

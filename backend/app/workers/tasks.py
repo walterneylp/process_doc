@@ -59,6 +59,9 @@ def _notification_channels(db: Session, tenant_id) -> dict:
         "emails": definition.get("emails", []),
         "whatsapp_numbers": definition.get("whatsapp_numbers", []),
         "telegram_users": definition.get("telegram_users", []),
+        "email_webhook_url": definition.get("email_webhook_url"),
+        "whatsapp_webhook_url": definition.get("whatsapp_webhook_url"),
+        "telegram_webhook_url": definition.get("telegram_webhook_url"),
     }
 
 
@@ -296,9 +299,43 @@ def process_document(document_id: str) -> None:
             subject=f"Novo documento {classification.category}",
             body=f"Documento {doc.id} prioridade {classification.priority}",
         )
+        if channels.get("email_webhook_url"):
+            WebhookNotifyAdapter().send(
+                channels.get("email_webhook_url"),
+                {
+                    "channel": "email",
+                    "recipients": all_notify_emails,
+                    "subject": f"Novo documento {classification.category}",
+                    "message": f"Documento {doc.id} prioridade {classification.priority}",
+                    "document_id": str(doc.id),
+                    "trace_id": doc.trace_id,
+                },
+            )
         message = f"Novo documento {classification.category} ({doc.doc_type}) prioridade {classification.priority}"
         WhatsAppNotifyAdapter().send(channels.get("whatsapp_numbers", []), message)
+        if channels.get("whatsapp_webhook_url"):
+            WebhookNotifyAdapter().send(
+                channels.get("whatsapp_webhook_url"),
+                {
+                    "channel": "whatsapp",
+                    "numbers": channels.get("whatsapp_numbers", []),
+                    "message": message,
+                    "document_id": str(doc.id),
+                    "trace_id": doc.trace_id,
+                },
+            )
         TelegramNotifyAdapter().send(channels.get("telegram_users", []), message)
+        if channels.get("telegram_webhook_url"):
+            WebhookNotifyAdapter().send(
+                channels.get("telegram_webhook_url"),
+                {
+                    "channel": "telegram",
+                    "users": channels.get("telegram_users", []),
+                    "message": message,
+                    "document_id": str(doc.id),
+                    "trace_id": doc.trace_id,
+                },
+            )
         if routing and routing.get("webhook_url"):
             WebhookNotifyAdapter().send(
                 routing.get("webhook_url"),

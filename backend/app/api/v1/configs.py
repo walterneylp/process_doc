@@ -38,6 +38,9 @@ class NotificationChannelsPayload(BaseModel):
     emails: list[str] = []
     whatsapp_numbers: list[str] = []
     telegram_users: list[str] = []
+    email_webhook_url: str | None = None
+    whatsapp_webhook_url: str | None = None
+    telegram_webhook_url: str | None = None
 
 
 class DocumentProfilePayload(BaseModel):
@@ -214,6 +217,9 @@ def get_notifications(
         "emails": definition.get("emails", []),
         "whatsapp_numbers": definition.get("whatsapp_numbers", []),
         "telegram_users": definition.get("telegram_users", []),
+        "email_webhook_url": definition.get("email_webhook_url"),
+        "whatsapp_webhook_url": definition.get("whatsapp_webhook_url"),
+        "telegram_webhook_url": definition.get("telegram_webhook_url"),
     }
 
 
@@ -232,6 +238,9 @@ def set_notifications(
         "emails": payload.emails,
         "whatsapp_numbers": payload.whatsapp_numbers,
         "telegram_users": payload.telegram_users,
+        "email_webhook_url": payload.email_webhook_url,
+        "whatsapp_webhook_url": payload.whatsapp_webhook_url,
+        "telegram_webhook_url": payload.telegram_webhook_url,
     }
     if rule:
         rule.definition = definition
