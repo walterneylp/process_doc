@@ -33,7 +33,7 @@
           <h2>Acesso</h2>
           <div class="field">
             <label>Email</label>
-            <input id="emailInput" type="email" placeholder="seu@email.com" />
+            <input id="emailInput" type="email" placeholder="admin@processdoc.com" />
           </div>
           <div class="field">
             <label>Senha</label>
@@ -43,12 +43,15 @@
           <p id="loginStatus" class="status"></p>
         </section>
 
-        <section class="card" id="panelCard" hidden>
-          <div class="panel-header">
+        <section id="panelCard" hidden>
+          <div class="toolbar">
             <h2 id="panelTitle">Resumo</h2>
-            <button id="refreshBtn" class="secondary-btn">Atualizar</button>
+            <div class="toolbar-actions">
+              <button id="refreshBtn" class="secondary-btn">Atualizar</button>
+              <button id="logoutBtn" class="danger-btn">Sair</button>
+            </div>
           </div>
-          <pre id="panelBody"></pre>
+          <div id="panelBody"></div>
         </section>
       </main>
     </div>
